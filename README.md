@@ -1,7 +1,13 @@
-# NVR — 個人監控系統
+<p align="center">
+  <img src="app/web/icons/Icon-512.png" width="112" alt="NVR 圖示">
+</p>
 
-用一台 Windows 電腦和一支 USB 鏡頭，做成可以在外面用手機看的監控系統。
+<h1 align="center">NVR — 個人監控系統</h1>
+
+<p align="center">
+用一台 Windows 電腦和一支 USB 鏡頭，做成可以在外面用手機看的監控系統。<br>
 即時畫面（含聲音）、手動錄影、截圖、回放；只有自己的裝置連得進來。
+</p>
 
 <p align="center">
   <img src="docs/screen-live.jpg" width="280" alt="即時畫面">
