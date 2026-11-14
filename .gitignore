@@ -1,0 +1,21 @@
+# Secrets & local data — never commit
+server/config.json
+storage/
+*.key
+*.crt
+*.pem
+
+# Build output & dependencies
+server/node_modules/
+server/dist/
+
+# MediaMTX binary release (download separately, see README); only our config is tracked
+mediamtx/*
+!mediamtx/mediamtx.yml
+
+# Local tooling
+.claude/
+.vscode/
+*.log
+Thumbs.db
+desktop.ini

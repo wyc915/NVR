@@ -1,0 +1,51 @@
+# Claude_nvr MediaMTX config
+# Full reference of all options: mediamtx.default.yml
+# Started by the Node server (server/src/stream/mediamtx.ts), which also sets
+# MTX_AUTHHTTPADDRESS to point at its own auth endpoint.
+
+logLevel: info
+
+# --- Auth: delegated to the Node server (POST /internal/mediamtx/auth) ---
+# Local processes (our FFmpeg capture/recorder/snapshot) may publish/read;
+# remote clients may only read the camera stream, with the API token.
+# The control API is bound to 127.0.0.1 and excluded from HTTP auth.
+authMethod: http
+authHTTPAddress: http://127.0.0.1:8080/internal/mediamtx/auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
+# --- Control API (used by the Node control service) ---
+api: true
+apiAddress: 127.0.0.1:9997
+
+# --- RTSP: local only. FFmpeg publishes here; recorder/snapshot read from here ---
+rtsp: true
+rtspTransports: [tcp]
+rtspAddress: 127.0.0.1:8554
+
+# --- WebRTC: low-latency live view for phone/browser (auth required, see above) ---
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
+# Clients don't talk to MediaMTX's HTTP port directly: the Node server proxies WHEP
+# (POST /api/live/whep) from loopback, so no browser origin needs to be allowed.
+webrtcAllowOrigins: []
+# Not needed for Tailscale: IPs of all interfaces (incl. the Tailscale adapter) are
+# advertised automatically (webrtcIPsFromInterfaces defaults to true).
+webrtcAdditionalHosts: []
+
+# --- Unused protocols ---
+rtmp: false
+hls: false
+srt: false
+moq: false
+playback: false
+metrics: false
+pprof: false
+
+paths:
+  cam:
+    source: publisher

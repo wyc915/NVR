@@ -1,0 +1,41 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+  "token": "",
+
+  "allowedNetworks": [
+    "100.64.0.0/10",
+    "fd7a:115c:a1e0::/48",
+    "192.168.0.0/16",
+    "10.0.0.0/8",
+    "172.16.0.0/12"
+  ],
+
+  "logLevel": "info",
+
+  "ffmpegPath": "ffmpeg",
+  "ffprobePath": "ffprobe",
+  "mediamtxPath": "../mediamtx/mediamtx.exe",
+  "mediamtxConfig": "../mediamtx/mediamtx.yml",
+  "mediamtxApi": "http://127.0.0.1:9997",
+  "rtspUrl": "rtsp://127.0.0.1:8554/cam",
+  "webrtcPort": 8889,
+  "streamPath": "cam",
+
+  "storageDir": "../storage",
+  "webDir": "../app/build/web",
+
+  "camera": {
+    "video": "GENERAL WEBCAM",
+    "audio": "麥克風 (GENERAL WEBCAM)",
+    "inputCodec": "mjpeg",
+    "inputFps": 30,
+    "encoder": "nvenc",
+    "defaultPreset": "720p"
+  },
+
+  "recording": {
+    "maxSegmentMinutes": 30,
+    "audioBitrate": "96k"
+  }
+}
