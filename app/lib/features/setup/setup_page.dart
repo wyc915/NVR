@@ -16,8 +16,9 @@ class SetupPage extends ConsumerStatefulWidget {
 
 class _SetupPageState extends ConsumerState<SetupPage> {
   final _form = GlobalKey<FormState>();
-  // On the web build served by the PC over HTTPS, the page's own address is the server.
+  // Web build: the page's own origin is the server, only the token is asked for.
   late final ServerSettings? _start = widget.initial ?? ServerSettings.fromPageOrigin();
+  late final ServerSettings? _origin = ServerSettings.fromPageOrigin();
   late final _host = TextEditingController(text: _start?.address ?? '');
   late final _port = TextEditingController(text: '${_start?.secure == false ? _start!.port : 8080}');
   late final _token = TextEditingController(text: widget.initial?.token ?? '');
@@ -56,6 +57,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
 
   ServerSettings _parse() {
     final token = _token.text.trim();
+    if (_origin != null) return ServerSettings.fromPageOrigin(token: token)!;
     if (_isUrl) {
       final u = Uri.parse(_host.text.trim());
       return ServerSettings(host: u.host, port: u.port, token: token, secure: u.scheme == 'https');
@@ -80,41 +82,55 @@ class _SetupPageState extends ConsumerState<SetupPage> {
             padding: const EdgeInsets.all(16),
             children: [
               if (!editing)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 16),
-                  child: Text('輸入電腦的 IP（在外面請用 Tailscale IP）和 server/config.json 裡的 token。'),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    _origin != null
+                        ? '貼上 server/config.json 裡的 token。'
+                        : '輸入電腦的 IP（在外面請用 Tailscale IP）和 server/config.json 裡的 token。',
+                  ),
                 ),
-              TextFormField(
-                controller: _host,
-                decoration: const InputDecoration(
-                  labelText: '電腦位址',
-                  hintText: '例如 100.101.102.103 或 https://電腦.xxx.ts.net',
-                  border: OutlineInputBorder(),
+              if (_origin != null) ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.computer),
+                  title: const Text('監控電腦'),
+                  subtitle: Text(_origin.apiBase.toString()),
                 ),
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                validator: (v) {
-                  final s = v?.trim() ?? '';
-                  if (s.isEmpty) return '請輸入位址';
-                  if (s.contains('://')) {
-                    final u = Uri.tryParse(s);
-                    if (u == null || u.host.isEmpty || !(u.scheme == 'https' || u.scheme == 'http')) return '網址不正確';
-                  }
-                  return null;
-                },
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 16),
-              if (!_isUrl) TextFormField(
-                controller: _port,
-                decoration: const InputDecoration(labelText: 'API 埠', border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
-                validator: (v) {
-                  final n = int.tryParse(v?.trim() ?? '');
-                  return (n == null || n < 1 || n > 65535) ? '埠號不正確' : null;
-                },
-              ),
-              if (!_isUrl) const SizedBox(height: 16),
+                const SizedBox(height: 8),
+              ] else
+                TextFormField(
+                  controller: _host,
+                  decoration: const InputDecoration(
+                    labelText: '電腦位址',
+                    hintText: '例如 100.101.102.103 或 https://電腦.xxx.ts.net',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  validator: (v) {
+                    final s = v?.trim() ?? '';
+                    if (s.isEmpty) return '請輸入位址';
+                    if (s.contains('://')) {
+                      final u = Uri.tryParse(s);
+                      if (u == null || u.host.isEmpty || !(u.scheme == 'https' || u.scheme == 'http')) return '網址不正確';
+                    }
+                    return null;
+                  },
+                  onChanged: (_) => setState(() {}),
+                ),
+              if (_origin == null) const SizedBox(height: 16),
+              if (_origin == null && !_isUrl)
+                TextFormField(
+                  controller: _port,
+                  decoration: const InputDecoration(labelText: 'API 埠', border: OutlineInputBorder()),
+                  keyboardType: TextInputType.number,
+                  validator: (v) {
+                    final n = int.tryParse(v?.trim() ?? '');
+                    return (n == null || n < 1 || n > 65535) ? '埠號不正確' : null;
+                  },
+                ),
+              if (_origin == null && !_isUrl) const SizedBox(height: 16),
               TextFormField(
                 controller: _token,
                 decoration: InputDecoration(
@@ -143,10 +159,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
                     ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Text('測試連線並儲存'),
               ),
-              if (editing) ...[
-                const SizedBox(height: 12),
-                TextButton(onPressed: _logout, child: const Text('清除設定')),
-              ],
+              if (editing) ...[const SizedBox(height: 12), TextButton(onPressed: _logout, child: const Text('清除設定'))],
             ],
           ),
         ),

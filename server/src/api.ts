@@ -177,6 +177,7 @@ export async function buildApi(deps: ApiDeps) {
   const status = async () => ({
     camera: {
       online: capture.isOnline,
+      state: capture.cameraState,
       preset: capture.currentPreset,
       presets: Object.keys(PRESETS),
       encoder: cfg.camera.encoder,
@@ -223,6 +224,8 @@ export async function buildApi(deps: ApiDeps) {
 
   app.post('/api/live/whep', async (req, reply) => {
     if (typeof req.body !== 'string' || !req.body.startsWith('v=')) throw new HttpError(400, 'SDP offer required');
+    // On-demand: switch the camera on and wait for the stream before MediaMTX sees the offer.
+    if (!(await capture.ensure())) return reply.code(503).send({ error: 'camera unavailable' });
     const r = await fetch(whepUpstream, {
       method: 'POST',
       headers: { 'Content-Type': 'application/sdp' },

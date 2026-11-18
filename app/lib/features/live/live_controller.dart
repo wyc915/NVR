@@ -156,6 +156,7 @@ class LiveController extends ChangeNotifier {
       if (res.statusCode == 404 || res.statusCode == 400) {
         throw _LiveError('鏡頭離線');
       }
+      if (res.statusCode == 503) throw _LiveError('鏡頭無法啟動');
       if (res.statusCode == 401) throw _LiveError('串流驗證失敗（token 錯誤）');
       if (res.statusCode != 201) throw _LiveError('串流伺服器錯誤 ${res.statusCode}');
 

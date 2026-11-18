@@ -7,7 +7,6 @@ import type { Db } from '../db.js';
 import { recordingDto } from '../dto.js';
 import type { EventBus } from '../events.js';
 import type { Logger } from '../log.js';
-import type { MediaMtx } from '../stream/mediamtx.js';
 import type { Capture } from '../stream/capture.js';
 import { run, stopFfmpeg, tailLines } from '../util/proc.js';
 import type { ProcessRegistry } from '../util/registry.js';
@@ -18,6 +17,8 @@ interface Session {
   id: string;
   startedAt: number;
   proc: ChildProcess | null;
+  /** Keeps the camera on (on-demand mode) for the whole session. */
+  release: () => void;
 }
 
 export interface RecordingStatus {
@@ -43,7 +44,6 @@ export class Recorder {
   constructor(
     private readonly cfg: Config,
     private readonly db: Db,
-    private readonly mtx: MediaMtx,
     private readonly capture: Capture,
     private readonly bus: EventBus,
     private readonly log: Logger,
@@ -57,7 +57,7 @@ export class Recorder {
 
   start(): RecordingStatus {
     if (this.session) return this.status;
-    const s: Session = { id: randomUUID(), startedAt: Date.now(), proc: null };
+    const s: Session = { id: randomUUID(), startedAt: Date.now(), proc: null, release: this.capture.hold() };
     this.session = s;
     this.bus.emit({ type: 'recording.started', sessionId: s.id, startedAt: s.startedAt });
     void this.loop(s);
@@ -69,6 +69,7 @@ export class Recorder {
     if (!s) return this.status;
     this.session = null;
     if (s.proc) await stopFfmpeg(s.proc);
+    s.release();
     this.bus.emit({ type: 'recording.stopped', sessionId: s.id });
     return this.status;
   }
@@ -102,7 +103,7 @@ export class Recorder {
 
   private async loop(s: Session): Promise<void> {
     while (this.session === s) {
-      if (!(await this.mtx.waitStreamReady(10_000))) {
+      if (!(await this.capture.ensure(10_000))) {
         if (this.session === s) this.log.warn('recording: waiting for camera stream');
         continue;
       }

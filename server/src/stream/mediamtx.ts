@@ -47,17 +47,22 @@ export class MediaMtx {
     return false;
   }
 
-  async isStreamReady(): Promise<boolean> {
+  /** Is the camera stream published, and how many clients (WebRTC, RTSP) read it. */
+  async pathInfo(): Promise<{ ready: boolean; readers: number }> {
     try {
       const r = await fetch(`${this.cfg.mediamtxApi}/v3/paths/get/${this.cfg.streamPath}`, {
         signal: AbortSignal.timeout(2000),
       });
-      if (!r.ok) return false;
-      const j = (await r.json()) as { ready?: boolean };
-      return j.ready === true;
+      if (!r.ok) return { ready: false, readers: 0 };
+      const j = (await r.json()) as { ready?: boolean; readers?: unknown[] };
+      return { ready: j.ready === true, readers: Array.isArray(j.readers) ? j.readers.length : 0 };
     } catch {
-      return false;
+      return { ready: false, readers: 0 };
     }
+  }
+
+  async isStreamReady(): Promise<boolean> {
+    return (await this.pathInfo()).ready;
   }
 
   async waitStreamReady(timeoutMs: number): Promise<boolean> {

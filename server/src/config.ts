@@ -49,6 +49,10 @@ export interface Config {
     inputFps: number;
     encoder: 'nvenc' | 'x264';
     defaultPreset: PresetName;
+    /** Only run the camera while someone watches, records or takes a snapshot. */
+    onDemand: boolean;
+    /** On-demand: stop the camera this long after the last viewer/recording ends. */
+    idleSeconds: number;
   };
   recording: {
     maxSegmentMinutes: number;

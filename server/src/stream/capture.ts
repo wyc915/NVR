@@ -4,24 +4,46 @@ import type { Logger } from '../log.js';
 import type { ProcessRegistry } from '../util/registry.js';
 import { stopFfmpeg } from '../util/proc.js';
 import { Supervisor } from '../util/supervisor.js';
+import { sleep } from '../util/time.js';
 import type { MediaMtx } from './mediamtx.js';
+
+/**
+ * idle     – camera and encoder are off (on-demand mode, nobody needs the stream)
+ * starting – capture process launched, stream not published yet
+ * live     – stream is published in MediaMTX
+ * offline  – capture should be running but the stream isn't coming up (camera unplugged, …)
+ */
+export type CameraState = 'idle' | 'starting' | 'live' | 'offline';
+
+/** How long a (re)started capture may take before it counts as offline. */
+const START_GRACE_MS = 15_000;
 
 /**
  * Owns the camera: one FFmpeg process captures video+audio from DirectShow,
  * encodes H.264 (NVENC or x264) + Opus, and publishes to MediaMTX over RTSP.
  * Everything else (live view, recording, snapshots) reads from MediaMTX.
+ *
+ * On-demand mode (default): the process only runs while something needs the stream.
+ * Live view / snapshots call `ensure()`, an active recording holds it with `hold()`,
+ * and MediaMTX's reader count keeps it alive while viewers are connected. After
+ * `idleSeconds` without any of these, the camera (and its indicator light) turns off.
  */
 export class Capture {
   private readonly sup: Supervisor;
   private preset: PresetName;
-  private online = false;
+  private state: CameraState = 'idle';
+  private wanted = false;
+  private startedAt = 0;
+  private liveSince = 0;
+  private holds = 0;
+  private lastBusy = 0;
   private poll: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly cfg: Config,
     private readonly mtx: MediaMtx,
     private readonly bus: EventBus,
-    log: Logger,
+    private readonly log: Logger,
     registry: ProcessRegistry,
     initialPreset: PresetName,
   ) {
@@ -40,35 +62,127 @@ export class Capture {
     return this.preset;
   }
 
+  get cameraState(): CameraState {
+    return this.state;
+  }
+
   get isOnline(): boolean {
-    return this.online;
+    return this.state === 'live';
+  }
+
+  /** How long the stream has been live (0 if it isn't). */
+  get liveForMs(): number {
+    return this.state === 'live' ? Date.now() - this.liveSince : 0;
   }
 
   start(): void {
-    this.sup.start();
-    this.poll = setInterval(() => void this.checkOnline(), 2000);
+    if (!this.cfg.camera.onDemand) this.activate();
+    this.poll = setInterval(() => void this.tick(), 2000);
   }
 
   async stop(): Promise<void> {
     if (this.poll) clearInterval(this.poll);
     this.poll = null;
+    this.wanted = false;
     await this.sup.stop();
   }
 
-  /** Switch quality: restarts the capture process (live view drops for ~1-2s). */
+  /** Make sure the stream is live (starting the camera if needed). */
+  async ensure(timeoutMs = 15_000): Promise<boolean> {
+    this.activate();
+    const end = Date.now() + timeoutMs;
+    while (Date.now() < end) {
+      this.lastBusy = Date.now();
+      if (await this.mtx.isStreamReady()) {
+        this.markLive();
+        return true;
+      }
+      this.activate(); // in case an idle shutdown raced with this call
+      await sleep(300);
+    }
+    return false;
+  }
+
+  /** Keep the camera on until the returned function is called (e.g. while recording). */
+  hold(): () => void {
+    this.holds++;
+    this.activate();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.holds--;
+      this.lastBusy = Date.now();
+    };
+  }
+
+  /** Switch quality: restarts the capture process if running (live view drops for ~1-2s). */
   async setPreset(preset: PresetName): Promise<void> {
     if (preset === this.preset) return;
     this.preset = preset;
     this.bus.emit({ type: 'preset.changed', preset });
+    if (!this.wanted) return; // idle: the next start uses the new preset
+    this.startedAt = Date.now();
+    this.lastBusy = Date.now();
     await this.sup.restart();
   }
 
-  private async checkOnline(): Promise<void> {
-    const ready = await this.mtx.isStreamReady();
-    if (ready === this.online) return;
-    this.online = ready;
-    if (ready) this.bus.emit({ type: 'camera.online' });
-    else this.bus.emit({ type: 'camera.offline', reason: this.sup.lastOutput.at(-1) });
+  private activate(): void {
+    this.lastBusy = Date.now();
+    if (this.wanted) return;
+    this.wanted = true;
+    this.startedAt = Date.now();
+    this.sup.start();
+    this.setState('starting');
+  }
+
+  private async deactivate(): Promise<void> {
+    if (!this.wanted) return;
+    this.wanted = false;
+    this.log.info({ idleSeconds: this.cfg.camera.idleSeconds }, 'nobody is using the camera, turning it off');
+    await this.sup.stop();
+    if (!this.wanted) this.setState('idle'); // unless something asked for it again meanwhile
+  }
+
+  private markLive(): void {
+    if (this.state === 'live') return;
+    this.liveSince = Date.now();
+    this.setState('live');
+  }
+
+  private async tick(): Promise<void> {
+    if (!this.wanted) return;
+    const info = await this.mtx.pathInfo();
+    if (!this.wanted) return;
+    const now = Date.now();
+    if (info.readers > 0 || this.holds > 0) this.lastBusy = now;
+
+    if (info.ready) this.markLive();
+    else this.setState(now - this.startedAt < START_GRACE_MS ? 'starting' : 'offline');
+
+    const idleMs = this.cfg.camera.idleSeconds * 1000;
+    if (this.cfg.camera.onDemand && this.holds === 0 && info.readers === 0 && now - this.lastBusy > idleMs) {
+      await this.deactivate();
+    }
+  }
+
+  private setState(s: CameraState): void {
+    if (s === this.state) return;
+    this.state = s;
+    switch (s) {
+      case 'live':
+        this.bus.emit({ type: 'camera.online' });
+        break;
+      case 'offline':
+        this.bus.emit({ type: 'camera.offline', reason: this.sup.lastOutput.at(-1) });
+        break;
+      case 'idle':
+        this.bus.emit({ type: 'camera.idle' });
+        break;
+      case 'starting':
+        this.bus.emit({ type: 'camera.starting' });
+        break;
+    }
   }
 
   buildArgs(): string[] {

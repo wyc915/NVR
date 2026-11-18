@@ -17,9 +17,28 @@ class RecordingStatus {
   static const idle = RecordingStatus(active: false);
 }
 
+/// Camera power state (the server only runs the camera while it's needed).
+enum CameraState {
+  idle, // off, nobody watching; starts automatically when needed
+  starting,
+  live,
+  offline; // should be running but isn't (unplugged, driver error, …)
+
+  static CameraState parse(Object? v, {required bool online}) => switch (v) {
+        'idle' => idle,
+        'starting' => starting,
+        'live' => live,
+        'offline' => offline,
+        _ => online ? live : offline, // older server
+      };
+
+  /// Recording / snapshots can be used (they switch the camera on if needed).
+  bool get usable => this != offline;
+}
+
 class ServerStatus {
   const ServerStatus({
-    required this.cameraOnline,
+    required this.camera,
     required this.preset,
     required this.presets,
     required this.encoder,
@@ -29,7 +48,8 @@ class ServerStatus {
     required this.whepPath,
   });
 
-  final bool cameraOnline;
+  final CameraState camera;
+  bool get cameraOnline => camera == CameraState.live;
   final String preset;
   final List<String> presets;
   final String encoder;
@@ -43,7 +63,7 @@ class ServerStatus {
     final disk = j['disk'] as Map<String, dynamic>;
     final live = j['live'] as Map<String, dynamic>;
     return ServerStatus(
-      cameraOnline: cam['online'] as bool,
+      camera: CameraState.parse(cam['state'], online: cam['online'] as bool),
       preset: cam['preset'] as String,
       presets: (cam['presets'] as List).cast<String>(),
       encoder: cam['encoder'] as String,
@@ -54,8 +74,8 @@ class ServerStatus {
     );
   }
 
-  ServerStatus copyWith({bool? cameraOnline, String? preset, RecordingStatus? recording}) => ServerStatus(
-        cameraOnline: cameraOnline ?? this.cameraOnline,
+  ServerStatus copyWith({CameraState? camera, String? preset, RecordingStatus? recording}) => ServerStatus(
+        camera: camera ?? this.camera,
         preset: preset ?? this.preset,
         presets: presets,
         encoder: encoder,

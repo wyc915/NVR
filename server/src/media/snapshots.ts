@@ -7,18 +7,18 @@ import { snapshotDto, type SnapshotDto } from '../dto.js';
 import type { EventBus } from '../events.js';
 import type { Logger } from '../log.js';
 import type { Capture } from '../stream/capture.js';
-import type { MediaMtx } from '../stream/mediamtx.js';
 import { HttpError } from '../util/errors.js';
 import { run } from '../util/proc.js';
-import { dayDir, stamp } from '../util/time.js';
+import { dayDir, sleep, stamp } from '../util/time.js';
 import { fileSize, toRel } from './files.js';
+
+const SETTLE_MS = 2000;
 
 /** Grabs one frame from the live stream as a full-size JPG plus a 320px thumbnail. */
 export class Snapshots {
   constructor(
     private readonly cfg: Config,
     private readonly db: Db,
-    private readonly mtx: MediaMtx,
     private readonly capture: Capture,
     private readonly bus: EventBus,
     private readonly log: Logger,
@@ -35,7 +35,10 @@ export class Snapshots {
   }
 
   private async doTake(): Promise<SnapshotDto> {
-    if (!(await this.mtx.isStreamReady())) throw new HttpError(503, 'camera stream is offline');
+    if (!(await this.capture.ensure())) throw new HttpError(503, 'camera stream is offline');
+    // Just switched on (on-demand): give auto-exposure a moment, first frames are dark.
+    const settle = SETTLE_MS - this.capture.liveForMs;
+    if (settle > 0) await sleep(settle);
 
     const now = Date.now();
     const dir = path.join(this.cfg.storageDir, 'snapshots', dayDir(now));

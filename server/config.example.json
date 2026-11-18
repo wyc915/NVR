@@ -1,14 +1,11 @@
 {
-  "host": "0.0.0.0",
+  "host": "127.0.0.1",
   "port": 8080,
   "token": "",
 
   "allowedNetworks": [
     "100.64.0.0/10",
-    "fd7a:115c:a1e0::/48",
-    "192.168.0.0/16",
-    "10.0.0.0/8",
-    "172.16.0.0/12"
+    "fd7a:115c:a1e0::/48"
   ],
 
   "logLevel": "info",
@@ -31,7 +28,9 @@
     "inputCodec": "mjpeg",
     "inputFps": 30,
     "encoder": "nvenc",
-    "defaultPreset": "720p"
+    "defaultPreset": "720p",
+    "onDemand": true,
+    "idleSeconds": 20
   },
 
   "recording": {

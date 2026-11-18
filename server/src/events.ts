@@ -10,6 +10,8 @@ import type { RecordingDto, SnapshotDto } from './dto.js';
 export type NvrEvent =
   | { type: 'camera.online' }
   | { type: 'camera.offline'; reason?: string }
+  | { type: 'camera.starting' }
+  | { type: 'camera.idle' }
   | { type: 'preset.changed'; preset: PresetName }
   | { type: 'recording.started'; sessionId: string; startedAt: number }
   | { type: 'recording.stopped'; sessionId: string }

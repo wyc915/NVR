@@ -258,9 +258,9 @@ class _VideoView extends StatelessWidget {
                       const SizedBox(height: 12),
                       Text(
                         switch (live.state) {
-                          LiveState.connecting => '連線中…',
+                          LiveState.connecting => status?.camera == CameraState.live ? '連線中…' : '開啟鏡頭中…',
                           LiveState.error => live.error ?? '連線失敗',
-                          _ => status?.cameraOnline == false ? '鏡頭離線' : '',
+                          _ => status?.camera == CameraState.offline ? '鏡頭離線' : '',
                         },
                         style: const TextStyle(color: Colors.white70),
                       ),
@@ -417,7 +417,7 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final recording = status.recording.active;
-    final online = status.cameraOnline;
+    final usable = status.camera.usable;
     final scheme = Theme.of(context).colorScheme;
 
     return Column(
@@ -431,7 +431,7 @@ class _Controls extends StatelessWidget {
                   minimumSize: const Size.fromHeight(56),
                   backgroundColor: recording ? Colors.red.shade700 : null,
                 ),
-                onPressed: busyRecord || (!online && !recording) ? null : onToggleRecording,
+                onPressed: busyRecord || (!usable && !recording) ? null : onToggleRecording,
                 icon: busyRecord
                     ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
                     : Icon(recording ? Icons.stop : Icons.fiber_manual_record),
@@ -442,7 +442,7 @@ class _Controls extends StatelessWidget {
             Expanded(
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
-                onPressed: busySnapshot || !online ? null : onSnapshot,
+                onPressed: busySnapshot || !usable ? null : onSnapshot,
                 icon: busySnapshot
                     ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.photo_camera),
@@ -479,11 +479,12 @@ class _Controls extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 24),
-        _InfoRow(
-          icon: online ? Icons.videocam : Icons.videocam_off,
-          text: online ? '鏡頭在線' : '鏡頭離線',
-          color: online ? Colors.green : scheme.error,
-        ),
+        switch (status.camera) {
+          CameraState.live => const _InfoRow(icon: Icons.videocam, text: '鏡頭開啟中', color: Colors.green),
+          CameraState.starting => const _InfoRow(icon: Icons.videocam, text: '鏡頭啟動中…'),
+          CameraState.idle => const _InfoRow(icon: Icons.videocam_off, text: '鏡頭待機（沒人看時自動關閉）'),
+          CameraState.offline => _InfoRow(icon: Icons.videocam_off, text: '鏡頭離線', color: scheme.error),
+        },
         _InfoRow(
           icon: Icons.storage,
           text: '硬碟剩餘 ${formatBytes(status.diskFree)} / ${formatBytes(status.diskTotal)}',

@@ -27,7 +27,9 @@ rtspAddress: 127.0.0.1:8554
 
 # --- WebRTC: low-latency live view for phone/browser (auth required, see above) ---
 webrtc: true
-webrtcAddress: :8889
+# Signaling (WHEP) only on loopback: phones reach it through the Node proxy.
+# Only the media port 8189 is reachable from outside (firewall: Tailscale only).
+webrtcAddress: 127.0.0.1:8889
 webrtcLocalUDPAddress: :8189
 webrtcLocalTCPAddress: :8189
 # Clients don't talk to MediaMTX's HTTP port directly: the Node server proxies WHEP

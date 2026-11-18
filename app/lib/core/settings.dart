@@ -23,10 +23,12 @@ class ServerSettings {
   /// "https://host" / "host" as shown in the setup form.
   String get address => secure ? 'https://$host${port == 443 ? '' : ':$port'}' : host;
 
-  /// On web, the page's own origin when it is served by the PC over HTTPS.
-  static ServerSettings? fromPageOrigin() {
-    if (!kIsWeb || Uri.base.scheme != 'https') return null;
-    return ServerSettings(host: Uri.base.host, port: Uri.base.port, token: '', secure: true);
+  /// Web build: the server is always the origin the page was loaded from
+  /// (any other address would be cross-origin and blocked by the browser).
+  static ServerSettings? fromPageOrigin({String token = ''}) {
+    if (!kIsWeb) return null;
+    final u = Uri.base;
+    return ServerSettings(host: u.host, port: u.port, token: token, secure: u.scheme == 'https');
   }
 }
 
@@ -38,6 +40,7 @@ class SettingsNotifier extends AsyncNotifier<ServerSettings?> {
     final host = await _storage.read(key: 'host');
     final port = int.tryParse(await _storage.read(key: 'port') ?? '');
     final token = await _storage.read(key: 'token');
+    if (kIsWeb) return token == null ? null : ServerSettings.fromPageOrigin(token: token);
     final secure = await _storage.read(key: 'secure') == '1';
     if (host == null || port == null || token == null) return null;
     return ServerSettings(host: host, port: port, token: token, secure: secure);

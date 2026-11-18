@@ -36,8 +36,8 @@ async function main(): Promise<void> {
 
   const mtx = new MediaMtx(cfg, log, registry);
   const capture = new Capture(cfg, mtx, bus, log, registry, preset);
-  const recorder = new Recorder(cfg, db, mtx, capture, bus, log, registry);
-  const snapshots = new Snapshots(cfg, db, mtx, capture, bus, log);
+  const recorder = new Recorder(cfg, db, capture, bus, log, registry);
+  const snapshots = new Snapshots(cfg, db, capture, bus, log);
 
   // The API must be up first: MediaMTX asks it to authorize every publish/read.
   const app = await buildApi({ cfg, db, bus, capture, recorder, snapshots, log });

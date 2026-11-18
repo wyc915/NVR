@@ -86,9 +86,13 @@ class StatusNotifier extends AsyncNotifier<ServerStatus> {
       case 'hello':
         state = AsyncData(ServerStatus.fromJson(ev['status'] as Map<String, dynamic>));
       case 'camera.online' when cur != null:
-        state = AsyncData(cur.copyWith(cameraOnline: true));
+        state = AsyncData(cur.copyWith(camera: CameraState.live));
       case 'camera.offline' when cur != null:
-        state = AsyncData(cur.copyWith(cameraOnline: false));
+        state = AsyncData(cur.copyWith(camera: CameraState.offline));
+      case 'camera.starting' when cur != null:
+        state = AsyncData(cur.copyWith(camera: CameraState.starting));
+      case 'camera.idle' when cur != null:
+        state = AsyncData(cur.copyWith(camera: CameraState.idle));
       case 'preset.changed' when cur != null:
         state = AsyncData(cur.copyWith(preset: ev['preset'] as String));
       case 'recording.started' when cur != null:
