@@ -50,8 +50,9 @@ class NvrApi {
 
   Future<void> setPreset(String preset) => _dio.post<void>('/api/stream/preset', data: {'preset': preset});
 
-  Future<RecordingStatus> startRecording() async {
-    final r = await _dio.post<Map<String, dynamic>>('/api/record/start');
+  /// [minutes]: stop automatically after this long (null = until stopped).
+  Future<RecordingStatus> startRecording({int? minutes}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/api/record/start', data: {'minutes': ?minutes});
     return RecordingStatus.fromJson(r.data!);
   }
 
@@ -65,10 +66,14 @@ class NvrApi {
     return Snapshot.fromJson(r.data!);
   }
 
-  Future<List<Recording>> recordings({DateTime? before, int limit = 30}) async {
+  Future<List<Recording>> recordings({DateTime? before, int limit = 30, bool starredOnly = false}) async {
     final r = await _dio.get<List<dynamic>>(
       '/api/recordings',
-      queryParameters: {'limit': limit, if (before != null) 'before': before.millisecondsSinceEpoch},
+      queryParameters: {
+        'limit': limit,
+        if (before != null) 'before': before.millisecondsSinceEpoch,
+        if (starredOnly) 'starred': true,
+      },
     );
     return r.data!.map((e) => Recording.fromJson(e as Map<String, dynamic>)).toList();
   }
@@ -81,6 +86,11 @@ class NvrApi {
     return r.data!.map((e) => Snapshot.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  Future<Recording> setStarred(String id, bool starred) async {
+    final r = await _dio.patch<Map<String, dynamic>>('/api/recordings/$id', data: {'starred': starred});
+    return Recording.fromJson(r.data!);
+  }
+
   Future<void> deleteRecording(String id) => _dio.delete<void>('/api/recordings/$id');
 
   Future<void> deleteSnapshot(String id) => _dio.delete<void>('/api/snapshots/$id');
@@ -91,6 +101,11 @@ class NvrApi {
     return r.data!.map((e) => Device.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  Future<List<AuthEvent>> loginHistory() async {
+    final r = await _dio.get<List<dynamic>>('/api/auth/history');
+    return r.data!.map((e) => AuthEvent.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<void> revokeDevice(String id) => _dio.delete<void>('/api/devices/$id');
 
   /// 6-digit code another device can use (within 5 minutes) to set up Face ID.
@@ -98,6 +113,13 @@ class NvrApi {
     final r = await _dio.post<Map<String, dynamic>>('/api/auth/pair-code');
     return (r.data!['code'] as String, DateTime.fromMillisecondsSinceEpoch((r.data!['expiresAt'] as num).toInt()));
   }
+
+  Future<SystemInfo> system() async {
+    final r = await _dio.get<Map<String, dynamic>>('/api/system');
+    return SystemInfo.fromJson(r.data!);
+  }
+
+  Future<void> restartCamera() => _dio.post<void>('/api/camera/restart');
 
   Future<void> logout() => _dio.post<void>('/api/auth/logout');
 
@@ -138,10 +160,14 @@ final apiProvider = Provider<NvrApi?>((ref) {
 
 /// Result of a passkey login/registration.
 class LoginResult {
-  const LoginResult(this.token, this.expiresAt, this.deviceName);
+  const LoginResult(this.token, this.expiresAt, this.deviceName, this.deviceId);
   final String token;
   final DateTime expiresAt;
   final String deviceName;
+  final String deviceId;
+
+  ServerSettings applyTo(ServerSettings s) =>
+      s.withToken(token, session: true, expiresAt: expiresAt, deviceName: deviceName, deviceId: deviceId);
 }
 
 /// Passkey (Face ID) endpoints, usable before logging in.
@@ -187,10 +213,12 @@ class AuthApi {
       data: {'flowId': flow.flowId, 'response': jsonDecode(responseJson)},
     );
     final d = r.data!;
+    final device = d['device'] as Map<String, dynamic>;
     return LoginResult(
       d['token'] as String,
       DateTime.fromMillisecondsSinceEpoch((d['expiresAt'] as num).toInt()),
-      (d['device'] as Map<String, dynamic>)['name'] as String,
+      device['name'] as String,
+      device['id'] as String,
     );
   }
 }

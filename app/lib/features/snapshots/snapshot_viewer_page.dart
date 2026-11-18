@@ -6,6 +6,8 @@ import '../../core/api.dart';
 import '../../core/format.dart';
 import '../../core/models.dart';
 import '../../state/media_lists.dart';
+import 'package:intl/intl.dart';
+import '../../widgets/share_button.dart';
 
 /// Full-size snapshot with pinch-to-zoom.
 class SnapshotViewerPage extends ConsumerWidget {
@@ -23,6 +25,12 @@ class SnapshotViewerPage extends ConsumerWidget {
         foregroundColor: Colors.white,
         title: Text(formatDateTime(snapshot.takenAt)),
         actions: [
+          ShareMediaButton(
+            url: api.mediaUrl(snapshot.fileUrl),
+            fileName: 'NVR_${DateFormat('yyyyMMdd_HHmmss').format(snapshot.takenAt)}.jpg',
+            mime: 'image/jpeg',
+            size: snapshot.size,
+          ),
           IconButton(
             tooltip: '刪除',
             icon: const Icon(Icons.delete_outline),

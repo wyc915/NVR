@@ -27,6 +27,9 @@ export class Supervisor extends EventEmitter {
   private backoffMs = 1000;
   private restartTimer: NodeJS.Timeout | null = null;
   private tail: string[] = [];
+  /** Unexpected exits since the server started. */
+  crashes = 0;
+  startedAt: number | null = null;
 
   constructor(private readonly opts: SupervisorOptions) {
     super();
@@ -86,6 +89,7 @@ export class Supervisor extends EventEmitter {
       env: this.opts.env ? { ...process.env, ...this.opts.env } : process.env,
     });
     this.child = child;
+    this.startedAt = startedAt;
     const onLine = (l: string) => log.debug({ proc: name }, l);
     const out = tailLines(child.stdout, 10, onLine);
     const err = tailLines(child.stderr, 10, onLine);
@@ -98,6 +102,7 @@ export class Supervisor extends EventEmitter {
       ended = true;
       if (child.pid) registry.remove(child.pid);
       this.child = null;
+      this.startedAt = null;
       this.tail = [...out, ...err];
       this.emit('exit', code);
 
@@ -105,6 +110,7 @@ export class Supervisor extends EventEmitter {
         log.info({ proc: name, code }, 'process stopped');
         return;
       }
+      this.crashes++;
       if (Date.now() - startedAt > 15_000) this.backoffMs = 1000;
       const delay = this.backoffMs;
       this.backoffMs = Math.min(this.backoffMs * 2, 30_000);

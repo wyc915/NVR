@@ -87,6 +87,27 @@ export class Capture {
     await this.sup.stop();
   }
 
+  get info() {
+    return {
+      state: this.state,
+      preset: this.preset,
+      onDemand: this.cfg.camera.onDemand,
+      running: this.sup.running,
+      since: this.sup.startedAt,
+      crashes: this.sup.crashes,
+      lastError: this.sup.crashes ? (this.sup.lastOutput.at(-1) ?? null) : null,
+    };
+  }
+
+  /** Restart the capture process (e.g. camera stuck); no-op while the camera is idle. */
+  async restart(): Promise<void> {
+    if (!this.wanted) return;
+    this.log.info('camera restart requested');
+    this.startedAt = Date.now();
+    this.lastBusy = Date.now();
+    await this.sup.restart();
+  }
+
   /** Make sure the stream is live (starting the camera if needed). */
   async ensure(timeoutMs = 15_000): Promise<boolean> {
     this.activate();

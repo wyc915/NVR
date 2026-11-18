@@ -32,6 +32,10 @@ export class MediaMtx {
     return this.sup.stop();
   }
 
+  get info() {
+    return { running: this.sup.running, since: this.sup.startedAt, crashes: this.sup.crashes };
+  }
+
   /** Wait until the MediaMTX control API answers. */
   async waitApi(timeoutMs: number): Promise<boolean> {
     const end = Date.now() + timeoutMs;

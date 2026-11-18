@@ -138,9 +138,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
     login
         .then((r) async {
-          await ref
-              .read(settingsProvider.notifier)
-              .save(_origin.withToken(r.token, session: true, expiresAt: r.expiresAt, deviceName: r.deviceName));
+          await ref.read(settingsProvider.notifier).save(r.applyTo(_origin));
           // The app switches to the home screen when settings change.
         })
         .catchError((Object e) {

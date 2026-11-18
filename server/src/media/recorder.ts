@@ -19,12 +19,16 @@ interface Session {
   proc: ChildProcess | null;
   /** Keeps the camera on (on-demand mode) for the whole session. */
   release: () => void;
+  /** Auto-stop time (ms epoch), if the session was started with a duration. */
+  stopAt?: number;
+  stopTimer?: NodeJS.Timeout;
 }
 
 export interface RecordingStatus {
   active: boolean;
   sessionId?: string;
   startedAt?: number;
+  stopAt?: number;
 }
 
 /**
@@ -52,14 +56,24 @@ export class Recorder {
 
   get status(): RecordingStatus {
     const s = this.session;
-    return s ? { active: true, sessionId: s.id, startedAt: s.startedAt } : { active: false };
+    return s ? { active: true, sessionId: s.id, startedAt: s.startedAt, stopAt: s.stopAt } : { active: false };
   }
 
-  start(): RecordingStatus {
+  /** @param minutes stop automatically after this long (so a forgotten recording doesn't run for days) */
+  start(minutes?: number): RecordingStatus {
     if (this.session) return this.status;
-    const s: Session = { id: randomUUID(), startedAt: Date.now(), proc: null, release: this.capture.hold() };
+    const startedAt = Date.now();
+    const s: Session = { id: randomUUID(), startedAt, proc: null, release: this.capture.hold() };
+    if (minutes) {
+      s.stopAt = startedAt + minutes * 60_000;
+      s.stopTimer = setTimeout(() => {
+        if (this.session !== s) return;
+        this.log.info({ minutes }, 'recording reached its time limit, stopping');
+        void this.stop();
+      }, minutes * 60_000);
+    }
     this.session = s;
-    this.bus.emit({ type: 'recording.started', sessionId: s.id, startedAt: s.startedAt });
+    this.bus.emit({ type: 'recording.started', sessionId: s.id, startedAt: s.startedAt, stopAt: s.stopAt });
     void this.loop(s);
     return this.status;
   }
@@ -68,6 +82,7 @@ export class Recorder {
     const s = this.session;
     if (!s) return this.status;
     this.session = null;
+    if (s.stopTimer) clearTimeout(s.stopTimer);
     if (s.proc) await stopFfmpeg(s.proc);
     s.release();
     this.bus.emit({ type: 'recording.stopped', sessionId: s.id });

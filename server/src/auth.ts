@@ -12,7 +12,7 @@ import type { Config } from './config.js';
 import type { Db, DeviceRow } from './db.js';
 import type { EventBus } from './events.js';
 import type { Logger } from './log.js';
-import { safeEqual, UrlSigner } from './security.js';
+import { isLoopback, safeEqual, UrlSigner } from './security.js';
 import { HttpError } from './util/errors.js';
 
 /** Who made a request: the API token (PC, Android app) or a passkey session (iPhone web app). */
@@ -41,6 +41,8 @@ const PAIR_TTL_MS = 5 * 60_000;
 const PAIR_MAX_TRIES = 5;
 const TOUCH_EVERY_MS = 60_000;
 const RP_NAME = '監控';
+/** Log API-token use from an address again after this long (the PC itself is never logged). */
+const TOKEN_LOG_EVERY_MS = 12 * 3600_000;
 
 /**
  * Passkey (WebAuthn / Face ID) login with per-device sessions.
@@ -56,6 +58,7 @@ export class Auth {
   private readonly flows = new Map<string, Flow>();
   private readonly pairCodes = new Map<string, { expires: number; tries: number }>();
   private readonly lastTouch = new Map<string, number>();
+  private readonly tokenSeen = new Map<string, number>();
 
   constructor(
     private readonly cfg: Config,
@@ -70,11 +73,23 @@ export class Auth {
 
   /** Check a Bearer token. */
   authenticate(bearer: string, ip: string): AuthContext | null {
-    if (safeEqual(bearer, this.cfg.token)) return { kind: 'token' };
+    if (safeEqual(bearer, this.cfg.token)) {
+      this.noteTokenUse(ip);
+      return { kind: 'token' };
+    }
     const s = this.sessionFor(bearer);
     if (!s) return null;
     this.touch(s.device_id, ip);
     return { kind: 'session', sessionId: s.id, deviceId: s.device_id };
+  }
+
+  /** The API token works everywhere, so record (and announce) where it's used from. */
+  private noteTokenUse(ip: string): void {
+    if (isLoopback(ip)) return;
+    const now = Date.now();
+    if (now - (this.tokenSeen.get(ip) ?? 0) < TOKEN_LOG_EVERY_MS) return;
+    this.tokenSeen.set(ip, now);
+    this.bus.emit({ type: 'auth.token', ip });
   }
 
   /** Signing key for media URLs carrying `sid` (null if the session is gone/expired). */

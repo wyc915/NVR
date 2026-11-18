@@ -64,7 +64,14 @@ class _LivePageState extends ConsumerState<LivePage> {
     final api = ref.read(apiProvider)!;
     setState(() => _busyRecord = true);
     try {
-      final r = s.recording.active ? await api.stopRecording() : await api.startRecording();
+      final RecordingStatus r;
+      if (s.recording.active) {
+        r = await api.stopRecording();
+      } else {
+        final minutes = await _askDuration();
+        if (minutes == null) return; // dismissed
+        r = await api.startRecording(minutes: minutes == 0 ? null : minutes);
+      }
       ref.read(statusProvider.notifier).setRecording(r);
       if (!r.active) _toast('錄影已停止，檔案整理中…');
     } catch (e) {
@@ -73,6 +80,26 @@ class _LivePageState extends ConsumerState<LivePage> {
       if (mounted) setState(() => _busyRecord = false);
     }
   }
+
+  /// Returns minutes (0 = no limit) or null if dismissed.
+  Future<int?> _askDuration() => showModalBottomSheet<int>(
+    context: context,
+    showDragHandle: true,
+    builder: (c) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ListTile(title: Text('錄多久？'), subtitle: Text('時間到會自動停止，也可以隨時手動停止')),
+          for (final (m, label) in const [(5, '5 分鐘'), (10, '10 分鐘'), (30, '30 分鐘'), (60, '1 小時'), (0, '不限時間')])
+            ListTile(
+              leading: Icon(m == 0 ? Icons.all_inclusive : Icons.timer_outlined),
+              title: Text(label),
+              onTap: () => Navigator.pop(c, m),
+            ),
+        ],
+      ),
+    ),
+  );
 
   Future<void> _snapshot() async {
     final api = ref.read(apiProvider)!;
@@ -247,7 +274,7 @@ class _VideoView extends StatelessWidget {
           builder: (context, _) => Stack(
             fit: StackFit.expand,
             children: [
-              RTCVideoView(live.renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain),
+              _ZoomableVideo(renderer: live.renderer),
               if (live.state != LiveState.playing)
                 Center(
                   child: Column(
@@ -275,7 +302,11 @@ class _VideoView extends StatelessWidget {
                 ),
               ),
               if (status?.recording.active == true)
-                Positioned(top: 8, right: 8, child: _RecBadge(startedAt: status!.recording.startedAt)),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _RecBadge(startedAt: status!.recording.startedAt, stopAt: status!.recording.stopAt),
+                ),
               Positioned(
                 bottom: 8,
                 right: 8,
@@ -354,15 +385,24 @@ class _Badge extends StatelessWidget {
 
 /// Red "REC 00:12" badge with a ticking timer.
 class _RecBadge extends StatefulWidget {
-  const _RecBadge({required this.startedAt});
+  const _RecBadge({required this.startedAt, this.stopAt});
 
   final DateTime? startedAt;
+  final DateTime? stopAt;
 
   @override
   State<_RecBadge> createState() => _RecBadgeState();
 }
 
 class _RecBadgeState extends State<_RecBadge> {
+  /// " · 剩 04:12" when the recording stops by itself.
+  String _left() {
+    final stop = widget.stopAt;
+    if (stop == null) return '';
+    final left = stop.difference(DateTime.now());
+    return ' · 剩 ${formatDuration(left.isNegative ? Duration.zero : left)}';
+  }
+
   late final Timer _timer;
 
   @override
@@ -386,7 +426,7 @@ class _RecBadgeState extends State<_RecBadge> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Text(
-          'REC ${formatDuration(elapsed.isNegative ? Duration.zero : elapsed)}',
+          'REC ${formatDuration(elapsed.isNegative ? Duration.zero : elapsed)}${_left()}',
           style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
         ),
       ),
@@ -534,6 +574,73 @@ class _ErrorCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Live video with pinch-to-zoom (digital zoom up to 5x); double-tap to reset.
+class _ZoomableVideo extends StatefulWidget {
+  const _ZoomableVideo({required this.renderer});
+
+  final RTCVideoRenderer renderer;
+
+  @override
+  State<_ZoomableVideo> createState() => _ZoomableVideoState();
+}
+
+class _ZoomableVideoState extends State<_ZoomableVideo> {
+  final _zoom = TransformationController();
+  var _scale = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _zoom.addListener(() {
+      final s = _zoom.value.getMaxScaleOnAxis();
+      if ((s - _scale).abs() > 0.05) setState(() => _scale = s);
+    });
+  }
+
+  @override
+  void dispose() {
+    _zoom.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(
+          onDoubleTap: () => _zoom.value = Matrix4.identity(),
+          child: InteractiveViewer(
+            transformationController: _zoom,
+            minScale: 1,
+            maxScale: 5,
+            clipBehavior: Clip.hardEdge,
+            child: RTCVideoView(widget.renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain),
+          ),
+        ),
+        if (_scale > 1.05)
+          Positioned(
+            left: 8,
+            bottom: 8,
+            child: GestureDetector(
+              onTap: () => _zoom.value = Matrix4.identity(),
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Text(
+                    '${_scale.toStringAsFixed(1)}x · 點這裡或雙擊還原',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

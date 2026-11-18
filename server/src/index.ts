@@ -42,7 +42,7 @@ async function main(): Promise<void> {
 
   // The API must be up first: MediaMTX asks it to authorize every publish/read.
   const auth = new Auth(cfg, db, bus, log.child({ mod: 'auth' }));
-  const app = await buildApi({ cfg, auth, db, bus, capture, recorder, snapshots, log });
+  const app = await buildApi({ cfg, auth, mtx, db, bus, capture, recorder, snapshots, log });
   await app.listen({ host: cfg.host, port: cfg.port });
 
   mtx.start();

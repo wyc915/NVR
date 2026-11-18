@@ -11,6 +11,8 @@ export interface RecordingRow {
   duration: number | null;
   size: number | null;
   preset: string | null;
+  /** 1 = kept on purpose (shown with a star, can be filtered). */
+  starred?: number;
 }
 
 export interface SnapshotRow {
@@ -135,6 +137,29 @@ export class Db {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /** Columns added after the first release. */
+  private migrate(): void {
+    const cols = (this.db.prepare(`PRAGMA table_info(recordings)`).all() as { name: string }[]).map((c) => c.name);
+    if (!cols.includes('starred')) {
+      this.db.exec(`ALTER TABLE recordings ADD COLUMN starred INTEGER NOT NULL DEFAULT 0`);
+    }
+  }
+
+  setRecordingStarred(id: string, starred: boolean): void {
+    this.db.prepare(`UPDATE recordings SET starred = ? WHERE id = ?`).run(starred ? 1 : 0, id);
+  }
+
+  /** Count and total size per media table. */
+  mediaStats(): { recordings: { count: number; bytes: number }; snapshots: { count: number; bytes: number } } {
+    const q = (t: string) =>
+      this.db.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(size), 0) AS bytes FROM ${t}`).get() as {
+        count: number;
+        bytes: number;
+      };
+    return { recordings: q('recordings'), snapshots: q('snapshots') };
   }
 
   // --- devices / passkeys / sessions ---
@@ -223,9 +248,12 @@ export class Db {
     return r;
   }
 
-  listRecordings(limit: number, before?: number): RecordingRow[] {
+  listRecordings(limit: number, before?: number, starredOnly = false): RecordingRow[] {
     return this.db
-      .prepare(`SELECT * FROM recordings WHERE started_at < ? ORDER BY started_at DESC LIMIT ?`)
+      .prepare(
+        `SELECT * FROM recordings WHERE started_at < ? ${starredOnly ? 'AND starred = 1' : ''}
+         ORDER BY started_at DESC LIMIT ?`,
+      )
       .all(before ?? BEFORE_MAX, limit) as RecordingRow[];
   }
 
@@ -265,6 +293,18 @@ export class Db {
   // --- events ---
   insertEvent(type: string, ts: number, data: unknown): void {
     this.db.prepare(`INSERT INTO events (type, ts, data) VALUES (?, ?, ?)`).run(type, ts, JSON.stringify(data));
+  }
+
+  listEventsExceptTypes(types: string[], limit: number): EventRow[] {
+    return this.db
+      .prepare(`SELECT * FROM events WHERE type NOT IN (${types.map(() => '?').join(',')}) ORDER BY ts DESC LIMIT ?`)
+      .all(...types, limit) as EventRow[];
+  }
+
+  listEventsOfTypes(types: string[], limit: number): EventRow[] {
+    return this.db
+      .prepare(`SELECT * FROM events WHERE type IN (${types.map(() => '?').join(',')}) ORDER BY ts DESC LIMIT ?`)
+      .all(...types, limit) as EventRow[];
   }
 
   listEvents(limit: number, before?: number): EventRow[] {

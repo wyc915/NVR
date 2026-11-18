@@ -12,6 +12,7 @@ class ServerSettings {
     this.session = false,
     this.expiresAt,
     this.deviceName,
+    this.deviceId,
   });
 
   /// Hostname or IP of the PC (LAN IP, or Tailscale IP / MagicDNS name).
@@ -30,24 +31,31 @@ class ServerSettings {
   final bool session;
   final DateTime? expiresAt;
 
-  /// Name this device registered its passkey under.
+  /// Name / server ID this device registered its passkey under.
   final String? deviceName;
+  final String? deviceId;
 
   Uri get apiBase => Uri(scheme: secure ? 'https' : 'http', host: host, port: port);
 
   /// "https://host" / "host" as shown in the setup form.
   String get address => secure ? 'https://$host${port == 443 ? '' : ':$port'}' : host;
 
-  ServerSettings withToken(String token, {bool session = false, DateTime? expiresAt, String? deviceName}) =>
-      ServerSettings(
-        host: host,
-        port: port,
-        token: token,
-        secure: secure,
-        session: session,
-        expiresAt: expiresAt,
-        deviceName: deviceName,
-      );
+  ServerSettings withToken(
+    String token, {
+    bool session = false,
+    DateTime? expiresAt,
+    String? deviceName,
+    String? deviceId,
+  }) => ServerSettings(
+    host: host,
+    port: port,
+    token: token,
+    secure: secure,
+    session: session,
+    expiresAt: expiresAt,
+    deviceName: deviceName,
+    deviceId: deviceId,
+  );
 
   /// Web build: the server is always the origin the page was loaded from
   /// (any other address would be cross-origin and blocked by the browser).
@@ -60,7 +68,7 @@ class ServerSettings {
 
 class SettingsNotifier extends AsyncNotifier<ServerSettings?> {
   static const _storage = FlutterSecureStorage();
-  static const _keys = ['host', 'port', 'token', 'secure', 'session', 'expires', 'device'];
+  static const _keys = ['host', 'port', 'token', 'secure', 'session', 'expires', 'device', 'device_id'];
 
   /// Survives logout/expiry: this device has a passkey, so offer Face ID first.
   static const _passkeyKey = 'has_passkey';
@@ -77,6 +85,7 @@ class SettingsNotifier extends AsyncNotifier<ServerSettings?> {
       return null; // expired: log in with Face ID again
     }
     final deviceName = await _storage.read(key: 'device');
+    final deviceId = await _storage.read(key: 'device_id');
 
     final ServerSettings base;
     if (kIsWeb) {
@@ -92,7 +101,7 @@ class SettingsNotifier extends AsyncNotifier<ServerSettings?> {
         secure: await _storage.read(key: 'secure') == '1',
       );
     }
-    return base.withToken(token, session: session, expiresAt: expiresAt, deviceName: deviceName);
+    return base.withToken(token, session: session, expiresAt: expiresAt, deviceName: deviceName, deviceId: deviceId);
   }
 
   Future<bool> hasPasskey() async => await _storage.read(key: _passkeyKey) == '1';
@@ -112,6 +121,11 @@ class SettingsNotifier extends AsyncNotifier<ServerSettings?> {
       await _storage.write(key: 'device', value: s.deviceName!);
     } else {
       await _storage.delete(key: 'device');
+    }
+    if (s.deviceId != null) {
+      await _storage.write(key: 'device_id', value: s.deviceId!);
+    } else {
+      await _storage.delete(key: 'device_id');
     }
     if (s.session) await _storage.write(key: _passkeyKey, value: '1');
     state = AsyncData(s);

@@ -15,10 +15,10 @@ class PagedState<T> {
   final bool loadingMore;
 
   PagedState<T> copyWith({List<T>? items, bool? hasMore, bool? loadingMore}) => PagedState(
-        items: items ?? this.items,
-        hasMore: hasMore ?? this.hasMore,
-        loadingMore: loadingMore ?? this.loadingMore,
-      );
+    items: items ?? this.items,
+    hasMore: hasMore ?? this.hasMore,
+    loadingMore: loadingMore ?? this.loadingMore,
+  );
 }
 
 abstract class PagedNotifier<T> extends AsyncNotifier<PagedState<T>> {
@@ -35,6 +35,9 @@ abstract class PagedNotifier<T> extends AsyncNotifier<PagedState<T>> {
 
   NvrApi get _api => ref.read(apiProvider)!;
 
+  /// Newly saved items belong in the list only when it shows the newest, unfiltered items.
+  bool get acceptsNewItems => startBefore == null;
+
   @override
   Future<PagedState<T>> build() async {
     final api = ref.watch(apiProvider);
@@ -42,7 +45,7 @@ abstract class PagedNotifier<T> extends AsyncNotifier<PagedState<T>> {
 
     // Prepend items the server just saved (pushed over the WebSocket).
     final sub = ref.read(serverEventsProvider).stream.listen((ev) {
-      if (ev['type'] != savedEventType) return;
+      if (ev['type'] != savedEventType || !acceptsNewItems) return;
       final cur = state.value;
       if (cur == null) return;
       final item = parseSavedEvent(ev);
@@ -52,12 +55,22 @@ abstract class PagedNotifier<T> extends AsyncNotifier<PagedState<T>> {
     });
     ref.onDispose(sub.cancel);
 
-    final items = await fetch(api, null);
+    final items = await fetch(api, startBefore);
     return PagedState(items: items, hasMore: items.length >= pageSize);
   }
 
+  /// Replace one item in place (e.g. after starring it).
+  void replace(T item) {
+    final cur = state.value;
+    if (cur == null) return;
+    state = AsyncData(cur.copyWith(items: [for (final e in cur.items) idOf(e) == idOf(item) ? item : e]));
+  }
+
+  /// Where the first page starts (null = newest); set by "jump to date".
+  DateTime? startBefore;
+
   Future<void> refresh() async {
-    final items = await fetch(_api, null);
+    final items = await fetch(_api, startBefore);
     state = AsyncData(PagedState(items: items, hasMore: items.length >= pageSize));
   }
 
@@ -84,6 +97,24 @@ abstract class PagedNotifier<T> extends AsyncNotifier<PagedState<T>> {
 }
 
 class RecordingsNotifier extends PagedNotifier<Recording> {
+  /// Only starred recordings.
+  bool starredOnly = false;
+
+  /// Show recordings from [day] (and older), or [day] = null for the newest.
+  Future<void> jumpTo(DateTime? day) {
+    startBefore = day == null ? null : DateTime(day.year, day.month, day.day + 1);
+    return refresh();
+  }
+
+  Future<void> setStarredOnly(bool v) {
+    starredOnly = v;
+    return refresh();
+  }
+
+  Future<void> toggleStar(Recording r) async {
+    replace(await _api.setStarred(r.id, !r.starred));
+  }
+
   @override
   int get pageSize => 30;
   @override
@@ -91,7 +122,11 @@ class RecordingsNotifier extends PagedNotifier<Recording> {
   @override
   Recording parseSavedEvent(Map<String, dynamic> ev) => Recording.fromJson(ev['recording'] as Map<String, dynamic>);
   @override
-  Future<List<Recording>> fetch(NvrApi api, DateTime? before) => api.recordings(before: before, limit: pageSize);
+  Future<List<Recording>> fetch(NvrApi api, DateTime? before) =>
+      api.recordings(before: before, limit: pageSize, starredOnly: starredOnly);
+
+  @override
+  bool get acceptsNewItems => super.acceptsNewItems && !starredOnly;
   @override
   DateTime timeOf(Recording item) => item.startedAt;
   @override
@@ -117,7 +152,6 @@ class SnapshotsNotifier extends PagedNotifier<Snapshot> {
   Future<void> deleteRemote(NvrApi api, String id) => api.deleteSnapshot(id);
 }
 
-final recordingsProvider =
-    AsyncNotifierProvider<RecordingsNotifier, PagedState<Recording>>(RecordingsNotifier.new);
+final recordingsProvider = AsyncNotifierProvider<RecordingsNotifier, PagedState<Recording>>(RecordingsNotifier.new);
 
 final snapshotsProvider = AsyncNotifierProvider<SnapshotsNotifier, PagedState<Snapshot>>(SnapshotsNotifier.new);

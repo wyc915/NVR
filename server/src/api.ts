@@ -8,13 +8,14 @@ import { PRESETS, type Config, type PresetName } from './config.js';
 import type { Auth, AuthContext } from './auth.js';
 import type { Db } from './db.js';
 import { recordingDto, snapshotDto } from './dto.js';
-import type { EventBus } from './events.js';
+import { AUTH_EVENTS, type EventBus } from './events.js';
 import type { Logger } from './log.js';
 import { diskUsage, removeFile, toAbs } from './media/files.js';
 import type { Recorder } from './media/recorder.js';
 import type { Snapshots } from './media/snapshots.js';
 import { FailureLimiter, isLoopback, NetworkAllowlist, safeEqual, UrlSigner } from './security.js';
 import type { Capture } from './stream/capture.js';
+import type { MediaMtx } from './stream/mediamtx.js';
 import { HttpError } from './util/errors.js';
 
 declare module 'fastify' {
@@ -27,6 +28,7 @@ declare module 'fastify' {
 export interface ApiDeps {
   cfg: Config;
   auth: Auth;
+  mtx: MediaMtx;
   db: Db;
   bus: EventBus;
   capture: Capture;
@@ -64,7 +66,7 @@ type ListQuery = { limit: number; before?: number };
 type IdParams = { id: string };
 
 export async function buildApi(deps: ApiDeps) {
-  const { cfg, auth, db, bus, capture, recorder, snapshots, log } = deps;
+  const { cfg, auth, mtx, db, bus, capture, recorder, snapshots, log } = deps;
   // Fastify's own logging (per-request lines) only at warn level; our modules log via `log`.
   const app = Fastify({
     loggerInstance: log.child({ mod: 'http' }, { level: 'warn' }),
@@ -283,11 +285,43 @@ export async function buildApi(deps: ApiDeps) {
   );
 
   // --- recording ---
-  app.post('/api/record/start', async () => recorder.start());
+  app.post<{ Body: { minutes?: number } | undefined }>(
+    '/api/record/start',
+    {
+      schema: {
+        body: {
+          type: ['object', 'null'],
+          properties: { minutes: { type: 'integer', minimum: 1, maximum: 24 * 60 } },
+        },
+      },
+    },
+    async (req) => recorder.start(req.body?.minutes),
+  );
   app.post('/api/record/stop', async () => recorder.stop());
 
-  app.get<{ Querystring: ListQuery }>('/api/recordings', { schema: { querystring: listQuery } }, async (req) =>
-    db.listRecordings(req.query.limit, req.query.before).map(recordingDto),
+  app.get<{ Querystring: ListQuery & { starred?: boolean } }>(
+    '/api/recordings',
+    {
+      schema: {
+        querystring: { ...listQuery, properties: { ...listQuery.properties, starred: { type: 'boolean' } } },
+      },
+    },
+    async (req) => db.listRecordings(req.query.limit, req.query.before, req.query.starred === true).map(recordingDto),
+  );
+
+  app.patch<{ Params: IdParams; Body: { starred: boolean } }>(
+    '/api/recordings/:id',
+    {
+      schema: {
+        params: idParams,
+        body: { type: 'object', required: ['starred'], properties: { starred: { type: 'boolean' } } },
+      },
+    },
+    async (req) => {
+      getRecording(req.params.id);
+      db.setRecordingStarred(req.params.id, req.body.starred);
+      return recordingDto(getRecording(req.params.id));
+    },
   );
 
   const getRecording = (id: string) => {
@@ -416,6 +450,34 @@ export async function buildApi(deps: ApiDeps) {
   app.post('/api/auth/pair-code', async () => auth.createPairCode());
 
   app.get('/api/devices', async (req) => auth.listDevices(req.auth!));
+
+  // System status page: processes, uptime, recent camera/recording events.
+  const serverStartedAt = Date.now();
+  app.get('/api/system', async () => ({
+    serverStartedAt,
+    serverTime: Date.now(),
+    node: process.version,
+    camera: capture.info,
+    mediamtx: mtx.info,
+    recording: recorder.status,
+    disk: await diskUsage(cfg.storageDir),
+    media: db.mediaStats(),
+    events: db.listEventsExceptTypes(AUTH_EVENTS, 20).map((e) => ({
+      type: e.type,
+      ts: e.ts,
+      ...(JSON.parse(e.data ?? '{}') as object),
+    })),
+  }));
+
+  app.post('/api/camera/restart', async () => {
+    await capture.restart();
+    return { state: capture.cameraState };
+  });
+
+  // Login history: new devices, Face ID logins, API-token use from new addresses, revocations.
+  app.get('/api/auth/history', async () =>
+    db.listEventsOfTypes(AUTH_EVENTS, 50).map((e) => ({ type: e.type, ts: e.ts, ...(JSON.parse(e.data ?? '{}') as object) })),
+  );
 
   app.delete<{ Params: IdParams }>('/api/devices/:id', { schema: { params: idParams } }, async (req) => {
     for (const sid of auth.revokeDevice(req.params.id)) {

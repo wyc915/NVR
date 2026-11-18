@@ -7,6 +7,8 @@ import 'package:video_player/video_player.dart';
 import '../../core/api.dart';
 import '../../core/format.dart';
 import '../../core/models.dart';
+import 'package:intl/intl.dart';
+import '../../widgets/share_button.dart';
 
 /// Plays a recorded MP4 streamed from the PC (HTTP range requests, so seeking works).
 class PlayerPage extends ConsumerStatefulWidget {
@@ -80,6 +82,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         title: Text(formatDateTime(r.startedAt)),
+        actions: [
+          ShareMediaButton(
+            url: ref.read(apiProvider)!.mediaUrl(r.fileUrl),
+            fileName: 'NVR_${DateFormat('yyyyMMdd_HHmmss').format(r.startedAt)}.mp4',
+            mime: 'video/mp4',
+            size: r.size,
+          ),
+        ],
       ),
       body: SafeArea(
         child: Center(

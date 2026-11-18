@@ -18,6 +18,15 @@ final serverEventsProvider = Provider<StreamController<Map<String, dynamic>>>((r
 /// Whether the event WebSocket is currently connected.
 final eventsConnectedProvider = NotifierProvider<_Flag, bool>(_Flag.new);
 
+/// When the PC was last reachable (WebSocket up), for the "offline since" notice.
+final lastConnectedProvider = NotifierProvider<_Time, DateTime?>(_Time.new);
+
+class _Time extends Notifier<DateTime?> {
+  @override
+  DateTime? build() => null;
+  void set(DateTime v) => state = v;
+}
+
 class _Flag extends Notifier<bool> {
   @override
   bool build() => false;
@@ -57,6 +66,7 @@ class StatusNotifier extends AsyncNotifier<ServerStatus> {
       if (_disposed) return;
       _backoff = const Duration(seconds: 1);
       ref.read(eventsConnectedProvider.notifier).set(true);
+      ref.read(lastConnectedProvider.notifier).set(DateTime.now());
     }, onError: (_) {});
     _sub = ch.stream.listen(
       _onMessage,
@@ -68,6 +78,7 @@ class StatusNotifier extends AsyncNotifier<ServerStatus> {
 
   void _reconnect(NvrApi api) {
     if (_disposed) return;
+    if (ref.read(eventsConnectedProvider)) ref.read(lastConnectedProvider.notifier).set(DateTime.now());
     ref.read(eventsConnectedProvider.notifier).set(false);
     _sub?.cancel();
     _retry?.cancel();
@@ -102,6 +113,7 @@ class StatusNotifier extends AsyncNotifier<ServerStatus> {
               active: true,
               sessionId: ev['sessionId'] as String?,
               startedAt: DateTime.fromMillisecondsSinceEpoch((ev['startedAt'] as num).toInt()),
+              stopAt: ev['stopAt'] is num ? DateTime.fromMillisecondsSinceEpoch((ev['stopAt'] as num).toInt()) : null,
             ),
           ),
         );

@@ -10,6 +10,7 @@ import '../../core/models.dart';
 import '../../core/passkey.dart';
 import '../../core/settings.dart';
 import '../setup/setup_page.dart';
+import 'system_page.dart';
 
 /// Signed-in devices (revoke), pairing codes for new devices, Face ID setup, logout.
 class SettingsPage extends ConsumerStatefulWidget {
@@ -26,7 +27,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<List<Device>> _load() => ref.read(apiProvider)!.devices();
 
-  void _reload() => setState(() => _devices = _load());
+  late Future<List<AuthEvent>> _history = ref.read(apiProvider)!.loginHistory();
+  var _historyAll = false;
+
+  void _reload() => setState(() {
+    _devices = _load();
+    _history = ref.read(apiProvider)!.loginHistory();
+  });
 
   void _toast(String msg) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -96,9 +103,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         .then((r) => AuthApi(s.apiBase).registerVerify(f, r))
         .then((r) async {
           // From now on this device uses Face ID sessions; the API token is no longer stored.
-          await ref
-              .read(settingsProvider.notifier)
-              .save(s.withToken(r.token, session: true, expiresAt: r.expiresAt, deviceName: r.deviceName));
+          await ref.read(settingsProvider.notifier).save(r.applyTo(s));
           if (!mounted) return;
           setState(() {
             _busy = false;
@@ -221,6 +226,44 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               icon: const Icon(Icons.add_to_home_screen),
               label: const Text('產生配對碼（加入新裝置）'),
             ),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.monitor_heart_outlined),
+            title: const Text('系統狀態'),
+            subtitle: const Text('鏡頭、串流伺服器、最近事件，可重新啟動鏡頭'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SystemPage())),
+          ),
+          const Divider(),
+          ListTile(title: Text('登入紀錄', style: theme.textTheme.titleSmall)),
+          FutureBuilder(
+            future: _history,
+            builder: (context, snap) {
+              if (snap.hasError) return ListTile(title: Text('無法載入：${describeError(snap.error!)}'));
+              final list = snap.data;
+              if (list == null) return const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator());
+              if (list.isEmpty) return const ListTile(title: Text('還沒有紀錄'));
+              final shown = _historyAll ? list : list.take(8).toList();
+              return Column(
+                children: [
+                  for (final e in shown)
+                    ListTile(
+                      dense: true,
+                      leading: Icon(switch (e.type) {
+                        'device.added' => Icons.add_moderator,
+                        'device.revoked' => Icons.block,
+                        'auth.token' => Icons.key,
+                        _ => Icons.face,
+                      }, size: 20),
+                      title: Text(e.description),
+                      subtitle: Text(DateFormat('y/M/d HH:mm').format(e.ts)),
+                    ),
+                  if (!_historyAll && list.length > shown.length)
+                    TextButton(onPressed: () => setState(() => _historyAll = true), child: const Text('顯示全部')),
+                ],
+              );
+            },
           ),
           const Divider(),
           ListTile(

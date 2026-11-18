@@ -12,6 +12,7 @@ export interface RecordingDto {
   preset: string | null;
   fileUrl: string;
   thumbUrl: string | null;
+  starred: boolean;
 }
 
 export interface SnapshotDto {
@@ -33,6 +34,7 @@ export const recordingDto = (r: RecordingRow): RecordingDto => ({
   preset: r.preset,
   fileUrl: `/api/recordings/${r.id}/file`,
   thumbUrl: r.thumb_path ? `/api/recordings/${r.id}/thumb` : null,
+  starred: r.starred === 1,
 });
 
 export const snapshotDto = (s: SnapshotRow): SnapshotDto => ({
