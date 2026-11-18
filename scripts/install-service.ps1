@@ -83,7 +83,8 @@ $log = Join-Path $logDir 'service.log'
 & $nssm set $ServiceName AppStdout $log | Out-Null
 & $nssm set $ServiceName AppStderr $log | Out-Null
 & $nssm set $ServiceName AppRotateFiles 1 | Out-Null
-& $nssm set $ServiceName AppRotateOnline 1 | Out-Null
+# Rotate only at (re)start: NSSM 2.24 with online rotation can hang in STOP_PENDING.
+& $nssm set $ServiceName AppRotateOnline 0 | Out-Null
 & $nssm set $ServiceName AppRotateBytes 10485760 | Out-Null
 # Graceful stop: Ctrl+C, give the server 15 s to finish the current recording.
 & $nssm set $ServiceName AppStopMethodConsole 15000 | Out-Null

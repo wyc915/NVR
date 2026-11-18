@@ -17,7 +17,10 @@ export type NvrEvent =
   | { type: 'recording.stopped'; sessionId: string }
   | { type: 'recording.saved'; recording: RecordingDto }
   | { type: 'recording.error'; message: string }
-  | { type: 'snapshot.saved'; snapshot: SnapshotDto };
+  | { type: 'snapshot.saved'; snapshot: SnapshotDto }
+  | { type: 'device.added'; deviceId: string; name: string; ip: string }
+  | { type: 'device.revoked'; deviceId: string; name: string }
+  | { type: 'auth.login'; deviceId: string; name: string; ip: string };
 
 export type NvrEventEnvelope = NvrEvent & { ts: number };
 
@@ -28,6 +31,9 @@ export const PERSISTED_EVENTS = new Set<NvrEvent['type']>([
   'recording.started',
   'recording.stopped',
   'recording.error',
+  'device.added',
+  'device.revoked',
+  'auth.login',
 ]);
 
 export class EventBus {

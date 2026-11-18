@@ -1,9 +1,11 @@
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
+import type { WebSocket } from 'ws';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PRESETS, type Config, type PresetName } from './config.js';
+import type { Auth, AuthContext } from './auth.js';
 import type { Db } from './db.js';
 import { recordingDto, snapshotDto } from './dto.js';
 import type { EventBus } from './events.js';
@@ -15,8 +17,16 @@ import { FailureLimiter, isLoopback, NetworkAllowlist, safeEqual, UrlSigner } fr
 import type { Capture } from './stream/capture.js';
 import { HttpError } from './util/errors.js';
 
+declare module 'fastify' {
+  interface FastifyRequest {
+    /** Set by the auth hook for /api/* requests that passed (null for public auth routes). */
+    auth: AuthContext | null;
+  }
+}
+
 export interface ApiDeps {
   cfg: Config;
+  auth: Auth;
   db: Db;
   bus: EventBus;
   capture: Capture;
@@ -54,7 +64,7 @@ type ListQuery = { limit: number; before?: number };
 type IdParams = { id: string };
 
 export async function buildApi(deps: ApiDeps) {
-  const { cfg, db, bus, capture, recorder, snapshots, log } = deps;
+  const { cfg, auth, db, bus, capture, recorder, snapshots, log } = deps;
   // Fastify's own logging (per-request lines) only at warn level; our modules log via `log`.
   const app = Fastify({
     loggerInstance: log.child({ mod: 'http' }, { level: 'warn' }),
@@ -116,7 +126,7 @@ export async function buildApi(deps: ApiDeps) {
   await app.register(fastifyStatic, { root: cfg.storageDir, serve: false });
   // The web app (app shell only, no secrets; the API below still needs the token).
   if (fs.existsSync(path.join(cfg.webDir, 'index.html'))) {
-    const noCache = /(?:^|[\\/])(?:index\.html|flutter_service_worker\.js|flutter_bootstrap\.js|version\.json|manifest\.json)$/;
+    const noCache = /(?:^|[\\/])(?:index\.html|flutter_service_worker\.js|flutter_bootstrap\.js|version\.json|manifest\.json|passkey\.js)$/;
     await app.register(fastifyStatic, {
       root: cfg.webDir,
       prefix: '/',
@@ -131,21 +141,39 @@ export async function buildApi(deps: ApiDeps) {
   await app.register(fastifyWebsocket, { options: { maxPayload: 1024 } });
 
   // 4) Auth for /api/*:
-  //    - "Authorization: Bearer <token>" for everything, or
-  //    - a signed URL (?exp=&sig=) for GET of media files / thumbnails / the event WebSocket.
+  //    - "Authorization: Bearer <token>" where token is the API token or a passkey session, or
+  //    - a signed URL (?exp=&sig=[&sid=]) for GET of media files / thumbnails / the event WebSocket.
+  //    /api/auth/public/* (passkey login/registration) check credentials themselves.
   //    Repeated failures from one IP get it blocked for a while.
+  app.decorateRequest('auth', null);
+  const bearerAuth = (req: FastifyRequest): AuthContext | null => {
+    const header = req.headers.authorization;
+    return header?.startsWith('Bearer ') ? auth.authenticate(header.slice(7), req.ip) : null;
+  };
+  const failAuth = (req: FastifyRequest) => {
+    if (limiter.fail(req.ip)) log.warn({ ip: req.ip }, 'too many failed auth attempts, blocking IP');
+  };
   app.addHook('onRequest', async (req, reply) => {
     if (!req.url.startsWith('/api/')) return;
     if (limiter.isBlocked(req.ip)) return reply.code(429).send({ error: 'too many failed attempts' });
+    // Decide by the matched route, not the raw URL (no tricks with "..", encoding, etc.).
+    if (req.routeOptions.url?.startsWith('/api/auth/public/')) return;
 
-    const header = req.headers.authorization;
-    if (header?.startsWith('Bearer ') && safeEqual(header.slice(7), cfg.token)) return;
+    req.auth = bearerAuth(req);
+    if (req.auth) return;
 
     const q = req.query as Record<string, unknown>;
     const path = req.url.split('?')[0];
-    if (req.method === 'GET' && signer.verify(path, q.exp, q.sig)) return;
+    if (req.method === 'GET') {
+      if (typeof q.sid === 'string') {
+        const key = auth.urlKey(q.sid);
+        if (key && signer.verify(path, q.exp, q.sig, key)) return;
+      } else if (signer.verify(path, q.exp, q.sig)) {
+        return;
+      }
+    }
 
-    if (limiter.fail(req.ip)) log.warn({ ip: req.ip }, 'too many failed auth attempts, blocking IP');
+    failAuth(req);
     return reply.code(401).send({ error: 'unauthorized' });
   });
 
@@ -325,6 +353,77 @@ export async function buildApi(deps: ApiDeps) {
     return { deleted: row.id };
   });
 
+  // --- passkey login (Face ID) and devices ---
+  const flowBody = {
+    type: 'object',
+    required: ['flowId', 'response'],
+    properties: { flowId: { type: 'string', maxLength: 64 }, response: { type: 'object' } },
+  } as const;
+  type FlowBody = { flowId: string; response: never };
+
+  app.post<{ Body: { name: string; pairCode?: string } }>(
+    '/api/auth/public/register/options',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['name'],
+          properties: {
+            name: { type: 'string', minLength: 1, maxLength: 40 },
+            pairCode: { type: 'string', pattern: '^[0-9]{6}$' },
+          },
+        },
+      },
+    },
+    async (req) => {
+      const authorized = bearerAuth(req) !== null;
+      try {
+        return await auth.registerOptions(req.headers.origin, req.body.name, authorized, req.body.pairCode);
+      } catch (err) {
+        if (err instanceof HttpError && err.statusCode === 401) failAuth(req);
+        throw err;
+      }
+    },
+  );
+
+  app.post<{ Body: FlowBody }>('/api/auth/public/register/verify', { schema: { body: flowBody } }, async (req) =>
+    auth.registerVerify(req.body.flowId, req.body.response, req.ip),
+  );
+
+  app.post('/api/auth/public/login/options', async (req) => auth.loginOptions(req.headers.origin));
+
+  app.post<{ Body: FlowBody }>('/api/auth/public/login/verify', { schema: { body: flowBody } }, async (req) => {
+    try {
+      return await auth.loginVerify(req.body.flowId, req.body.response, req.ip);
+    } catch (err) {
+      if (err instanceof HttpError && err.statusCode === 401) failAuth(req);
+      throw err;
+    }
+  });
+
+  app.get('/api/auth/me', async (req) => {
+    const a = req.auth!;
+    if (a.kind === 'token') return { kind: 'token' };
+    const d = db.getDevice(a.deviceId);
+    return { kind: 'session', device: d ? { id: d.id, name: d.name } : null };
+  });
+
+  app.post('/api/auth/logout', async (req) => {
+    if (req.auth?.kind === 'session') auth.logout(req.auth.sessionId);
+    return { ok: true };
+  });
+
+  app.post('/api/auth/pair-code', async () => auth.createPairCode());
+
+  app.get('/api/devices', async (req) => auth.listDevices(req.auth!));
+
+  app.delete<{ Params: IdParams }>('/api/devices/:id', { schema: { params: idParams } }, async (req) => {
+    for (const sid of auth.revokeDevice(req.params.id)) {
+      for (const s of sockets.get(sid) ?? []) s.close(4001, 'device revoked');
+    }
+    return { revoked: req.params.id };
+  });
+
   // --- event log ---
   app.get<{ Querystring: ListQuery }>('/api/events', { schema: { querystring: listQuery } }, async (req) =>
     db.listEvents(req.query.limit, req.query.before).map((e) => ({
@@ -335,12 +434,26 @@ export async function buildApi(deps: ApiDeps) {
     })),
   );
 
+  // Open sockets per passkey session, so revoking a device disconnects it right away.
+  const sockets = new Map<string, Set<WebSocket>>();
+
   // --- live events over WebSocket: first message is {type:"hello", status}, then every bus event ---
-  app.get('/api/ws', { websocket: true }, (socket) => {
+  app.get('/api/ws', { websocket: true }, (socket, req) => {
     const off = bus.on((ev) => {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(ev));
     });
-    socket.on('close', off);
+    const sid = (req.query as Record<string, unknown>).sid;
+    if (typeof sid === 'string') {
+      if (!sockets.has(sid)) sockets.set(sid, new Set());
+      sockets.get(sid)!.add(socket);
+    }
+    socket.on('close', () => {
+      off();
+      if (typeof sid === 'string') {
+        sockets.get(sid)?.delete(socket);
+        if (sockets.get(sid)?.size === 0) sockets.delete(sid);
+      }
+    });
     void status().then((s) => socket.send(JSON.stringify({ type: 'hello', ts: Date.now(), status: s })));
   });
 

@@ -66,7 +66,64 @@ CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
+
+-- Passkey login: a device (phone/browser) has one or more WebAuthn credentials
+-- and gets short-lived sessions. Revoking a device deletes all of them.
+CREATE TABLE IF NOT EXISTS devices (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  created_at    INTEGER NOT NULL,
+  last_seen_at  INTEGER,
+  last_ip       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS credentials (
+  id          TEXT PRIMARY KEY,           -- base64url credential ID
+  device_id   TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  public_key  BLOB NOT NULL,
+  counter     INTEGER NOT NULL,
+  transports  TEXT,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id           TEXT PRIMARY KEY,
+  device_id    TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  secret_hash  TEXT NOT NULL,             -- sha256 of the secret part, never the secret
+  url_key      TEXT NOT NULL,             -- HMAC key for this session's signed media URLs
+  created_at   INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL,
+  ip           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_device ON sessions(device_id);
 `;
+
+export interface DeviceRow {
+  id: string;
+  name: string;
+  created_at: number;
+  last_seen_at: number | null;
+  last_ip: string | null;
+}
+
+export interface CredentialRow {
+  id: string;
+  device_id: string;
+  public_key: Buffer;
+  counter: number;
+  transports: string | null;
+  created_at: number;
+}
+
+export interface SessionRow {
+  id: string;
+  device_id: string;
+  secret_hash: string;
+  url_key: string;
+  created_at: number;
+  expires_at: number;
+  ip: string | null;
+}
 
 const BEFORE_MAX = Number.MAX_SAFE_INTEGER;
 
@@ -76,7 +133,79 @@ export class Db {
   constructor(file: string) {
     this.db = new Database(file);
     this.db.pragma('journal_mode = WAL');
+    this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA);
+  }
+
+  // --- devices / passkeys / sessions ---
+  insertDevice(d: DeviceRow, c: CredentialRow): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare(`INSERT INTO devices (id, name, created_at, last_seen_at, last_ip) VALUES (@id, @name, @created_at, @last_seen_at, @last_ip)`)
+        .run(d);
+      this.db
+        .prepare(
+          `INSERT INTO credentials (id, device_id, public_key, counter, transports, created_at)
+           VALUES (@id, @device_id, @public_key, @counter, @transports, @created_at)`,
+        )
+        .run(c);
+    })();
+  }
+
+  listDevices(): DeviceRow[] {
+    return this.db.prepare(`SELECT * FROM devices ORDER BY COALESCE(last_seen_at, created_at) DESC`).all() as DeviceRow[];
+  }
+
+  getDevice(id: string): DeviceRow | undefined {
+    return this.db.prepare(`SELECT * FROM devices WHERE id = ?`).get(id) as DeviceRow | undefined;
+  }
+
+  touchDevice(id: string, ts: number, ip: string): void {
+    this.db.prepare(`UPDATE devices SET last_seen_at = ?, last_ip = ? WHERE id = ?`).run(ts, ip, id);
+  }
+
+  /** Deletes the device with its credentials and sessions; returns the deleted session IDs. */
+  deleteDevice(id: string): string[] {
+    return this.db.transaction(() => {
+      const sids = (this.db.prepare(`SELECT id FROM sessions WHERE device_id = ?`).all(id) as { id: string }[]).map(
+        (r) => r.id,
+      );
+      this.db.prepare(`DELETE FROM devices WHERE id = ?`).run(id);
+      return sids;
+    })();
+  }
+
+  getCredential(id: string): CredentialRow | undefined {
+    return this.db.prepare(`SELECT * FROM credentials WHERE id = ?`).get(id) as CredentialRow | undefined;
+  }
+
+  listCredentialIds(): { id: string; transports: string | null }[] {
+    return this.db.prepare(`SELECT id, transports FROM credentials`).all() as { id: string; transports: string | null }[];
+  }
+
+  updateCredentialCounter(id: string, counter: number): void {
+    this.db.prepare(`UPDATE credentials SET counter = ? WHERE id = ?`).run(counter, id);
+  }
+
+  insertSession(s: SessionRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO sessions (id, device_id, secret_hash, url_key, created_at, expires_at, ip)
+         VALUES (@id, @device_id, @secret_hash, @url_key, @created_at, @expires_at, @ip)`,
+      )
+      .run(s);
+  }
+
+  getSession(id: string): SessionRow | undefined {
+    return this.db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) as SessionRow | undefined;
+  }
+
+  deleteSession(id: string): void {
+    this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
+  }
+
+  deleteExpiredSessions(now: number): void {
+    this.db.prepare(`DELETE FROM sessions WHERE expires_at <= ?`).run(now);
   }
 
   close(): void {

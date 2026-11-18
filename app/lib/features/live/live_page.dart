@@ -39,10 +39,7 @@ class _LivePageState extends ConsumerState<LivePage> {
       _startIfPossible();
     });
     // Save bandwidth/battery: hang up in background, reconnect when back.
-    _lifecycle = AppLifecycleListener(
-      onHide: () => _live.stop(),
-      onShow: _startIfPossible,
-    );
+    _lifecycle = AppLifecycleListener(onHide: () => _live.stop(), onShow: _startIfPossible);
   }
 
   @override
@@ -85,18 +82,20 @@ class _LivePageState extends ConsumerState<LivePage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-          content: const Text('已截圖'),
-          // SnackBars with an action stay until dismissed by default; auto-hide this one.
-          persist: false,
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: '查看',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => SnapshotViewerPage(snapshot: snap)),
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('已截圖'),
+            // SnackBars with an action stay until dismissed by default; auto-hide this one.
+            persist: false,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: '查看',
+              onPressed: () =>
+                  Navigator.of(context)
+                      .push(MaterialPageRoute<void>(builder: (_) => SnapshotViewerPage(snapshot: snap))),
             ),
           ),
-        ));
+        );
     } catch (e) {
       _toast('截圖失敗：${describeError(e)}');
     } finally {
@@ -145,12 +144,12 @@ class _LivePageState extends ConsumerState<LivePage> {
 
   @override
   Widget build(BuildContext context) => Listener(
-        // Web (iPhone Safari): any tap unlocks audio playback blocked by autoplay rules.
-        // pointerup is the "user activation" event for touch, pointerdown for mouse.
-        onPointerDown: (_) => resumeWebAudio(),
-        onPointerUp: (_) => resumeWebAudio(),
-        child: _body(context),
-      );
+    // Web (iPhone Safari): any tap unlocks audio playback blocked by autoplay rules.
+    // pointerup is the "user activation" event for touch, pointerdown for mouse.
+    onPointerDown: (_) => resumeWebAudio(),
+    onPointerUp: (_) => resumeWebAudio(),
+    child: _body(context),
+  );
 
   Widget _body(BuildContext context) {
     // Connect when status first arrives; reconnect when the camera comes back.
@@ -184,7 +183,10 @@ class _LivePageState extends ConsumerState<LivePage> {
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _exitFullscreen();
         },
-        child: ColoredBox(color: Colors.black, child: Center(child: video)),
+        child: ColoredBox(
+          color: Colors.black,
+          child: Center(child: video),
+        ),
       );
     }
 
@@ -196,22 +198,22 @@ class _LivePageState extends ConsumerState<LivePage> {
           padding: const EdgeInsets.all(16),
           child: switch (status) {
             AsyncData(:final value) => _Controls(
-                status: value,
-                busyRecord: _busyRecord,
-                busySnapshot: _busySnapshot,
-                busyPreset: _busyPreset,
-                onToggleRecording: () => _toggleRecording(value),
-                onSnapshot: _snapshot,
-                onPreset: _setPreset,
-              ),
+              status: value,
+              busyRecord: _busyRecord,
+              busySnapshot: _busySnapshot,
+              busyPreset: _busyPreset,
+              onToggleRecording: () => _toggleRecording(value),
+              onSnapshot: _snapshot,
+              onPreset: _setPreset,
+            ),
             AsyncError(:final error) => _ErrorCard(
-                message: describeError(error),
-                onRetry: () => ref.invalidate(statusProvider),
-              ),
+              message: describeError(error),
+              onRetry: () => ref.invalidate(statusProvider),
+            ),
             _ => const Padding(
-                padding: EdgeInsets.all(32),
-                child: Center(child: CircularProgressIndicator()),
-              ),
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            ),
           },
         ),
       ],
@@ -256,14 +258,11 @@ class _VideoView extends StatelessWidget {
                       else
                         const Icon(Icons.videocam_off, color: Colors.white54, size: 40),
                       const SizedBox(height: 12),
-                      Text(
-                        switch (live.state) {
-                          LiveState.connecting => status?.camera == CameraState.live ? '連線中…' : '開啟鏡頭中…',
-                          LiveState.error => live.error ?? '連線失敗',
-                          _ => status?.camera == CameraState.offline ? '鏡頭離線' : '',
-                        },
-                        style: const TextStyle(color: Colors.white70),
-                      ),
+                      Text(switch (live.state) {
+                        LiveState.connecting => status?.camera == CameraState.live ? '連線中…' : '開啟鏡頭中…',
+                        LiveState.error => live.error ?? '連線失敗',
+                        _ => status?.camera == CameraState.offline ? '鏡頭離線' : '',
+                      }, style: const TextStyle(color: Colors.white70)),
                     ],
                   ),
                 ),
@@ -473,10 +472,7 @@ class _Controls extends StatelessWidget {
         if (recording)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              '錄影中切換畫質會自動分成新的檔案',
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-            ),
+            child: Text('錄影中切換畫質會自動分成新的檔案', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
           ),
         const SizedBox(height: 24),
         switch (status.camera) {
@@ -485,10 +481,7 @@ class _Controls extends StatelessWidget {
           CameraState.idle => const _InfoRow(icon: Icons.videocam_off, text: '鏡頭待機（沒人看時自動關閉）'),
           CameraState.offline => _InfoRow(icon: Icons.videocam_off, text: '鏡頭離線', color: scheme.error),
         },
-        _InfoRow(
-          icon: Icons.storage,
-          text: '硬碟剩餘 ${formatBytes(status.diskFree)} / ${formatBytes(status.diskTotal)}',
-        ),
+        _InfoRow(icon: Icons.storage, text: '硬碟剩餘 ${formatBytes(status.diskFree)} / ${formatBytes(status.diskTotal)}'),
         _InfoRow(icon: Icons.memory, text: '編碼器：${status.encoder == 'nvenc' ? 'NVIDIA NVENC' : 'CPU (x264)'}'),
       ],
     );
@@ -507,11 +500,15 @@ class _InfoRow extends StatelessWidget {
     final c = color ?? Theme.of(context).colorScheme.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        Icon(icon, size: 18, color: c),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: TextStyle(color: c))),
-      ]),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: c),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: TextStyle(color: c)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -527,13 +524,15 @@ class _ErrorCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(children: [
-          Icon(Icons.cloud_off, color: Theme.of(context).colorScheme.error, size: 40),
-          const SizedBox(height: 8),
-          Text('無法取得伺服器狀態：$message', textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          FilledButton.tonal(onPressed: onRetry, child: const Text('重試')),
-        ]),
+        child: Column(
+          children: [
+            Icon(Icons.cloud_off, color: Theme.of(context).colorScheme.error, size: 40),
+            const SizedBox(height: 8),
+            Text('無法取得伺服器狀態：$message', textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            FilledButton.tonal(onPressed: onRetry, child: const Text('重試')),
+          ],
+        ),
       ),
     );
   }

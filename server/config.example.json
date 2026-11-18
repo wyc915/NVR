@@ -36,5 +36,10 @@
   "recording": {
     "maxSegmentMinutes": 30,
     "audioBitrate": "96k"
+  },
+
+  "auth": {
+    "sessionHours": 24,
+    "origins": []
   }
 }

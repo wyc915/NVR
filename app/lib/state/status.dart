@@ -96,13 +96,15 @@ class StatusNotifier extends AsyncNotifier<ServerStatus> {
       case 'preset.changed' when cur != null:
         state = AsyncData(cur.copyWith(preset: ev['preset'] as String));
       case 'recording.started' when cur != null:
-        state = AsyncData(cur.copyWith(
-          recording: RecordingStatus(
-            active: true,
-            sessionId: ev['sessionId'] as String?,
-            startedAt: DateTime.fromMillisecondsSinceEpoch((ev['startedAt'] as num).toInt()),
+        state = AsyncData(
+          cur.copyWith(
+            recording: RecordingStatus(
+              active: true,
+              sessionId: ev['sessionId'] as String?,
+              startedAt: DateTime.fromMillisecondsSinceEpoch((ev['startedAt'] as num).toInt()),
+            ),
           ),
-        ));
+        );
       case 'recording.stopped' when cur != null:
         state = AsyncData(cur.copyWith(recording: RecordingStatus.idle));
     }

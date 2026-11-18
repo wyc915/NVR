@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { buildApi } from './api.js';
+import { Auth } from './auth.js';
 import { isPresetName, loadConfig } from './config.js';
 import { Db } from './db.js';
 import { EventBus, PERSISTED_EVENTS } from './events.js';
@@ -40,7 +41,8 @@ async function main(): Promise<void> {
   const snapshots = new Snapshots(cfg, db, capture, bus, log);
 
   // The API must be up first: MediaMTX asks it to authorize every publish/read.
-  const app = await buildApi({ cfg, db, bus, capture, recorder, snapshots, log });
+  const auth = new Auth(cfg, db, bus, log.child({ mod: 'auth' }));
+  const app = await buildApi({ cfg, auth, db, bus, capture, recorder, snapshots, log });
   await app.listen({ host: cfg.host, port: cfg.port });
 
   mtx.start();

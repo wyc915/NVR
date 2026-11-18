@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/passkey.dart';
 import 'core/settings.dart';
 import 'features/home/home_shell.dart';
+import 'features/setup/login_page.dart';
 import 'features/setup/setup_page.dart';
 
 class NvrApp extends ConsumerWidget {
@@ -21,11 +24,13 @@ class NvrApp extends ConsumerWidget {
       supportedLocales: const [Locale('zh', 'TW'), Locale('en')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       home: switch (settings) {
-        AsyncData(value: null) => const SetupPage(),
+        AsyncData(value: null) || AsyncError() => _loginPage(),
         AsyncData() => const HomeShell(),
-        AsyncError() => const SetupPage(),
         _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
       },
     );
   }
+
+  /// Web app with passkey support (iPhone Safari over https): Face ID login.
+  static Widget _loginPage() => kIsWeb && passkeySupported() ? const LoginPage() : const SetupPage();
 }

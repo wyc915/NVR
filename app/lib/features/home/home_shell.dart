@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/settings.dart';
 import '../../state/status.dart';
 import '../../state/ui.dart';
 import '../live/live_page.dart';
 import '../recordings/recordings_page.dart';
-import '../setup/setup_page.dart';
+import '../settings/settings_page.dart';
 import '../snapshots/snapshots_page.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
@@ -48,15 +47,15 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             ),
           Tooltip(
             message: connected ? '已連線到電腦' : '與電腦的連線中斷',
-            child: Icon(connected ? Icons.cloud_done : Icons.cloud_off,
-                color: connected ? null : Theme.of(context).colorScheme.error),
+            child: Icon(
+              connected ? Icons.cloud_done : Icons.cloud_off,
+              color: connected ? null : Theme.of(context).colorScheme.error,
+            ),
           ),
           IconButton(
-            tooltip: '伺服器設定',
+            tooltip: '設定',
             icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
-              builder: (_) => SetupPage(initial: ref.read(settingsProvider).value),
-            )),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SettingsPage())),
           ),
         ],
       ),
@@ -67,9 +66,15 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.videocam_outlined), selectedIcon: Icon(Icons.videocam), label: '即時'),
           NavigationDestination(
-              icon: Icon(Icons.video_library_outlined), selectedIcon: Icon(Icons.video_library), label: '錄影'),
+            icon: Icon(Icons.video_library_outlined),
+            selectedIcon: Icon(Icons.video_library),
+            label: '錄影',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: '截圖'),
+            icon: Icon(Icons.photo_library_outlined),
+            selectedIcon: Icon(Icons.photo_library),
+            label: '截圖',
+          ),
         ],
       ),
     );

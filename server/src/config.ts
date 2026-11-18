@@ -58,6 +58,15 @@ export interface Config {
     maxSegmentMinutes: number;
     audioBitrate: string;
   };
+  auth: {
+    /** Passkey (Face ID) login: how long a session lasts before Face ID is asked again. */
+    sessionHours: number;
+    /**
+     * Web origins allowed for passkeys. Empty = any https://*.ts.net (tailscale serve)
+     * and http://localhost:<port>.
+     */
+    origins: string[];
+  };
 }
 
 function readJson(file: string): unknown {
@@ -83,6 +92,7 @@ export function loadConfig(): Config {
     ...user,
     camera: { ...example.camera, ...user.camera },
     recording: { ...example.recording, ...user.recording },
+    auth: { ...example.auth, ...user.auth },
   };
   if (!raw.token || raw.token.length < 24) {
     throw new Error(`"token" in ${file} must be at least 24 characters (delete it to generate one)`);

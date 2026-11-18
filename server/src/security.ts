@@ -66,20 +66,28 @@ const CLOCK_SKEW_S = 300;
 export class UrlSigner {
   private readonly key: Buffer;
 
+  /** Signing key for a secret (the API token, or a passkey session token). */
+  static deriveKey(secret: string): Buffer {
+    return crypto.createHmac('sha256', secret).update('nvr-media-url-v1').digest();
+  }
+
   constructor(token: string) {
-    this.key = crypto.createHmac('sha256', token).update('nvr-media-url-v1').digest();
+    this.key = UrlSigner.deriveKey(token);
   }
 
-  sign(path: string, exp: number): string {
-    return crypto.createHmac('sha256', this.key).update(`${path}\n${exp}`).digest('base64url');
+  sign(path: string, exp: number, key = this.key): string {
+    return crypto.createHmac('sha256', key).update(`${path}\n${exp}`).digest('base64url');
   }
 
-  verify(path: string, exp: unknown, sig: unknown, nowS = Math.floor(Date.now() / 1000)): boolean {
+  /**
+   * @param key signing key of the session the URL claims (`sid` query); default: the API token's.
+   */
+  verify(path: string, exp: unknown, sig: unknown, key = this.key, nowS = Math.floor(Date.now() / 1000)): boolean {
     if (!SIGNABLE_PATHS.test(path) || typeof sig !== 'string' || typeof exp !== 'string') return false;
     const e = Number(exp);
     if (!Number.isInteger(e)) return false;
     if (e < nowS - CLOCK_SKEW_S || e > nowS + MAX_TTL_S + CLOCK_SKEW_S) return false;
-    return safeEqual(sig, this.sign(path, e));
+    return safeEqual(sig, this.sign(path, e, key));
   }
 }
 

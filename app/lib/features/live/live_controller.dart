@@ -203,9 +203,7 @@ class LiveController extends ChangeNotifier {
     _audioTracks.clear();
     if (_initialized) renderer.srcObject = null;
     if (session != null) {
-      unawaited(_http
-          .delete<void>(session, options: Options(headers: _headers))
-          .then((_) {}, onError: (_) {}));
+      unawaited(_http.delete<void>(session, options: Options(headers: _headers)).then((_) {}, onError: (_) {}));
     }
     if (pc != null) {
       pc.onConnectionState = null;
