@@ -157,10 +157,9 @@ flowchart LR
    npm start          # 第一次啟動會產生 config.json 和隨機 token
    ```
    用 `ffmpeg -list_devices true -f dshow -i dummy` 查出鏡頭和麥克風名稱，填進 `config.json` 的 `camera.video` / `camera.audio`
-4. **網頁版**
+4. **網頁版**（會加上版本號，已開啟的 App 回到前景時會自動更新）
    ```bash
-   cd app
-   flutter build web --release --no-web-resources-cdn
+   scriptsuild-web.ps1
    ```
 5. **安裝成 Windows 服務**（系統管理員 PowerShell）
    ```bash

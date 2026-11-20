@@ -5,7 +5,7 @@
 
 ```bash
 flutter pub get
-flutter build web --release --no-web-resources-cdn   # 網頁版（iPhone Safari），由 server 在 / 提供
+../scripts/build-web.ps1   # 網頁版（iPhone Safari），由 server 在 / 提供；帶版本號，開著的 App 會自動更新
 flutter build apk --release --split-per-abi          # Android
 flutter analyze
 ```

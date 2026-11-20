@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
+import '../../core/app_update.dart';
 import '../../core/models.dart';
 import '../../core/passkey.dart';
 import '../../core/settings.dart';
@@ -271,6 +272,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             title: Text('登出', style: TextStyle(color: theme.colorScheme.error)),
             subtitle: Text(s.session ? '下次用 Face ID 登入' : '會清除這台裝置保存的 token'),
             onTap: _logout,
+          ),
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.info_outline),
+            title: Text('版本 ${buildId.isEmpty ? '開發版' : buildId}'),
+            subtitle: const Text('電腦更新後，App 回到前景時會自動重新載入'),
           ),
         ],
       ),

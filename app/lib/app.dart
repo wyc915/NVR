@@ -1,19 +1,51 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/app_update.dart';
 import 'core/passkey.dart';
 import 'core/settings.dart';
 import 'features/home/home_shell.dart';
 import 'features/setup/login_page.dart';
 import 'features/setup/setup_page.dart';
 
-class NvrApp extends ConsumerWidget {
+class NvrApp extends ConsumerStatefulWidget {
   const NvrApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NvrApp> createState() => _NvrAppState();
+}
+
+class _NvrAppState extends ConsumerState<NvrApp> {
+  late final AppLifecycleListener _lifecycle;
+  Timer? _updateCheck;
+
+  @override
+  void initState() {
+    super.initState();
+    // Web: pick up a new build when the app starts, comes back to the foreground, and
+    // every 15 minutes while open (home-screen web apps stay in memory for days).
+    if (kIsWeb) {
+      reloadIfOutdated();
+      _lifecycle = AppLifecycleListener(onShow: reloadIfOutdated, onResume: reloadIfOutdated);
+      _updateCheck = Timer.periodic(const Duration(minutes: 15), (_) => reloadIfOutdated());
+    } else {
+      _lifecycle = AppLifecycleListener();
+    }
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    _updateCheck?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     return MaterialApp(
       title: '監控',
