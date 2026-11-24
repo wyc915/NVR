@@ -78,7 +78,7 @@ App 下方有三個分頁，右上角是連線狀態和設定。連不到電腦�
 
 ```mermaid
 flowchart LR
-  subgraph PC["Windows 電腦（Windows 服務 ClaudeNVR）"]
+  subgraph PC["Windows 電腦（手動啟動 scripts\start-server.ps1）"]
     CAM[USB 鏡頭<br/>MJPEG + 麥克風] --> CAP[FFmpeg capture<br/>NVENC H.264 + Opus]
     CAP -- RTSP 127.0.0.1 --> MTX[MediaMTX<br/>串流伺服器]
     MTX -- RTSP --> REC[FFmpeg recorder<br/>→ MP4]
@@ -104,7 +104,7 @@ flowchart LR
 | 錄影 | FFmpeg | 先寫 fragmented MP4（斷電可救），停止後轉成 faststart MP4（AAC 音訊，手機可直接播放）並產生縮圖 |
 | App | Flutter 3（Dart）、Riverpod、flutter_webrtc、dio、video_player | 一份程式碼：網頁版（iPhone）、Android；之後有 Mac 也能編 iOS 原生 App |
 | 遠端連線 | Tailscale + `tailscale serve` | 私人網路與 HTTPS 憑證，不需要開 Port 或固定 IP |
-| 部署 | NSSM（Windows 服務）、Windows 防火牆 | 開機自動啟動、當機自動重啟、log 自動輪替 |
+| 部署 | PowerShell 腳本手動啟動（可選 NSSM Windows 服務）、Windows 防火牆 | 子程序掛掉自動重啟；要開機自動啟動可另外裝成服務 |
 
 ### 資料流程
 
@@ -137,7 +137,9 @@ flowchart LR
 ├─ app/             Flutter App（詳見 app/README.md）
 ├─ mediamtx/        mediamtx.yml（執行檔請另外下載）
 ├─ scripts/
-│  ├─ install-service.ps1   安裝成 Windows 服務（NSSM）
+│  ├─ start-server.ps1      手動啟動伺服器（Ctrl+C 停止）
+│  ├─ start-server.cmd      同上，可直接雙擊執行
+│  ├─ install-service.ps1   （可選）安裝成 Windows 服務（NSSM）
 │  ├─ setup-firewall.ps1    防火牆規則（只允許 Tailscale）
 │  └─ set-config.mjs        修改 config.json（不會顯示 token）
 ├─ docs/            README 用的截圖
@@ -159,12 +161,14 @@ flowchart LR
    用 `ffmpeg -list_devices true -f dshow -i dummy` 查出鏡頭和麥克風名稱，填進 `config.json` 的 `camera.video` / `camera.audio`
 4. **網頁版**（會加上版本號，已開啟的 App 回到前景時會自動更新）
    ```bash
-   scriptsuild-web.ps1
+   scripts\build-web.ps1
    ```
-5. **安裝成 Windows 服務**（系統管理員 PowerShell）
+5. **啟動伺服器**：開一個 PowerShell 視窗執行，要停止就按 Ctrl+C（錄影中會先存檔），關掉視窗也會停止
    ```bash
-   scripts\install-service.ps1
+   scripts\start-server.ps1
    ```
+   或直接雙擊 `scripts\start-server.cmd`。如果 PowerShell 顯示「已停用指令碼執行」，改用 `powershell -ExecutionPolicy Bypass -File scripts\start-server.ps1`（只對這次執行有效，不改系統設定）
+   想要開機自動啟動的話，可以改裝成 Windows 服務（系統管理員 PowerShell 執行 `scripts\install-service.ps1`，移除加 `-Uninstall`）
 6. **Tailscale**：電腦和手機都安裝並登入同一個帳號，在電腦上啟用 HTTPS：
    ```bash
    tailscale serve --bg http://127.0.0.1:8080
