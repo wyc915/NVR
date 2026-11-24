@@ -31,7 +31,43 @@
 
   <title>監控</title>
   <link rel="manifest" href="manifest.json">
+  <!-- The page itself never scrolls or bounces (only lists inside the app do), so iPhone
+       Safari never sees content sliding under the status bar and doesn't blur it. -->
+  <style>
+    html, body {
+      position: fixed; inset: 0; margin: 0; width: 100%; height: 100%;
+      overflow: hidden; overscroll-behavior: none;
+      background: #f5fbf9;
+    }
+    @media (prefers-color-scheme: dark) { html, body { background: #0e1514; } }
+  </style>
   <script src="passkey.js"></script>
+  <script>
+    // iPhone home-screen app: the page can run under the (blurred) status bar and the home
+    // indicator. Flutter web doesn't read the safe-area insets itself, so the app asks here.
+    // viewport-fit=cover is re-added because Flutter replaces the viewport meta on start.
+    window.nvrSafeArea = function () {
+      var m = document.querySelector('meta[name="viewport"]');
+      if (m && m.content.indexOf('viewport-fit') < 0) m.content += ', viewport-fit=cover';
+      var p = document.getElementById('nvr-safe-area');
+      if (!p) {
+        p = document.createElement('div');
+        p.id = 'nvr-safe-area';
+        p.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+          'padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)';
+        document.body.appendChild(p);
+      }
+      var s = getComputedStyle(p);
+      var top = parseFloat(s.paddingTop) || 0, bottom = parseFloat(s.paddingBottom) || 0;
+      // Home-screen app drawn under the status bar but iOS reports no inset: page is as tall
+      // as the screen, so the status bar and home indicator overlap it. Use typical sizes.
+      var standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+      var fullHeight = Math.abs(screen.height - innerHeight) < 4 || Math.abs(screen.width - innerHeight) < 4;
+      var fallback = standalone && fullHeight && top === 0 && innerHeight > innerWidth;
+      if (fallback) { top = 54; bottom = Math.max(bottom, 34); }
+      return [top, bottom];
+    };
+  </script>
 </head>
 <body>
   <!--
