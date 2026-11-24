@@ -8,6 +8,7 @@ import '../../core/models.dart';
 import '../../core/settings.dart';
 import '../../state/status.dart';
 import '../../state/ui.dart';
+import '../../widgets/app_logo.dart';
 import '../live/live_page.dart';
 import '../recordings/recordings_page.dart';
 import '../settings/settings_page.dart';
@@ -83,7 +84,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_titles[_tab]),
+        title: _tab == 0 ? const AppLogo() : Text(_titles[_tab]),
         actions: [
           if (status?.recording.active == true)
             const Padding(
