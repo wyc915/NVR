@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App icon glyph (same geometry as web/icons, 120x120 design box), centered in the 108dp adaptive-icon canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="180"
+    android:viewportHeight="180">
+    <group
+        android:pivotX="61"
+        android:pivotY="59"
+        android:scaleX="0.88"
+        android:scaleY="0.88"
+        android:translateX="29"
+        android:translateY="31">
+        <path
+            android:pathData="M24,58 L60,28 L96,58"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M33,52 L33,92 L87,92 L87,52"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="butt"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M50.5,70 a9.5,9.5 0 1,0 19,0 a9.5,9.5 0 1,0 -19,0"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7" />
+        <path
+            android:pathData="M83,28 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0"
+            android:fillColor="#E5484D"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="3" />
+    </group>
+</vector>
