@@ -101,22 +101,158 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         ],
       ),
       body: withBanner,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.videocam_outlined), selectedIcon: Icon(Icons.videocam), label: '即時'),
-          NavigationDestination(
-            icon: Icon(Icons.video_library_outlined),
-            selectedIcon: Icon(Icons.video_library),
-            label: '錄影',
+      bottomNavigationBar: _Dock(index: _tab, onSelect: (i) => setState(() => _tab = i)),
+    );
+  }
+}
+
+/// Floating capsule tab bar: rounded, bordered, soft shadow, with a small bar above the
+/// selected tab that slides over with a slight overshoot.
+class _Dock extends StatelessWidget {
+  const _Dock({required this.index, required this.onSelect});
+
+  final int index;
+  final ValueChanged<int> onSelect;
+
+  static const _items = [
+    (Icons.videocam_outlined, Icons.videocam, '即時'),
+    (Icons.video_library_outlined, Icons.video_library, '錄影'),
+    (Icons.photo_library_outlined, Icons.photo_library, '截圖'),
+  ];
+  static const _radius = BorderRadius.all(Radius.circular(26));
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final bottom = MediaQuery.paddingOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 6, 16, bottom > 12 ? bottom : 14),
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: dark ? scheme.surfaceContainerHigh : scheme.surfaceContainerLowest,
+              borderRadius: _radius,
+              border: Border.all(color: scheme.outlineVariant.withValues(alpha: dark ? .5 : .7)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: dark ? .55 : .16),
+                  blurRadius: 32,
+                  spreadRadius: -10,
+                  offset: const Offset(0, 12),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: dark ? .2 : .06),
+                  blurRadius: 8,
+                  spreadRadius: -4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: SizedBox(
+              height: 64,
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final w = (box.maxWidth - 16) / _items.length;
+                  return Stack(
+                    children: [
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.easeOutBack,
+                        top: 4,
+                        left: 8 + w * index + (w - 24) / 2,
+                        child: Container(
+                          width: 24,
+                          height: 4,
+                          decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(4)),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          children: [
+                            for (final (i, (icon, selectedIcon, label)) in _items.indexed)
+                              Expanded(
+                                child: _DockTab(
+                                  icon: i == index ? selectedIcon : icon,
+                                  label: label,
+                                  selected: i == index,
+                                  onTap: () => onSelect(i),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.photo_library_outlined),
-            selectedIcon: Icon(Icons.photo_library),
-            label: '截圖',
+        ),
+      ),
+    );
+  }
+}
+
+class _DockTab extends StatefulWidget {
+  const _DockTab({required this.icon, required this.label, required this.selected, required this.onTap});
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_DockTab> createState() => _DockTabState();
+}
+
+class _DockTabState extends State<_DockTab> {
+  var _pressed = false;
+
+  void _press(bool v) => setState(() => _pressed = v);
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = widget.selected ? scheme.primary : scheme.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      selected: widget.selected,
+      label: widget.label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _press(true),
+        onTapUp: (_) => _press(false),
+        onTapCancel: () => _press(false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _pressed ? .9 : 1,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(widget.icon, size: 24, color: color),
+              const SizedBox(height: 3),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 11,
+                  letterSpacing: .2,
+                  fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w500,
+                  color: widget.selected ? scheme.onSurface : scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

@@ -50,8 +50,8 @@ class _NvrAppState extends ConsumerState<NvrApp> {
     return MaterialApp(
       title: '監控',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: Colors.teal, brightness: Brightness.light),
-      darkTheme: ThemeData(colorSchemeSeed: Colors.teal, brightness: Brightness.dark),
+      theme: _theme(Brightness.light),
+      darkTheme: _theme(Brightness.dark),
       locale: const Locale('zh', 'TW'),
       supportedLocales: const [Locale('zh', 'TW'), Locale('en')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
@@ -60,6 +60,21 @@ class _NvrAppState extends ConsumerState<NvrApp> {
         AsyncData() => const HomeShell(),
         _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
       },
+    );
+  }
+
+  /// Taller app bar so titles sit a little lower, away from the iPhone status bar.
+  static ThemeData _theme(Brightness b) {
+    final base = ThemeData(colorSchemeSeed: Colors.teal, brightness: b);
+    return base.copyWith(
+      appBarTheme: AppBarTheme(
+        toolbarHeight: 72,
+        titleSpacing: 20,
+        titleTextStyle: base.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: base.colorScheme.onSurface,
+        ),
+      ),
     );
   }
 
